@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppState } from "../state/AppStateContext";
 import { belowFloor } from "../state/selectors";
-import { samples, totalSeq, meanDepth, minDepth, maxDepth, fmt, groupName } from "../lib/data";
+import { samples, totalSeq, meanDepth, minDepth, maxDepth, fmt, groupName, groupColor } from "../lib/data";
 import Reveal from "../components/Reveal";
 import ChartTools from "../components/ChartTools";
 import BarChart from "../components/charts/BarChart";
@@ -16,8 +16,6 @@ const FLOOR_PRESETS = [
   { value: 5000, label: "5,000 Weiss 2017" },
   { value: 10000, label: "10,000 conservative" },
 ];
-
-const groupColor = (g) => (g === "H" ? "var(--color-cat-1)" : "var(--color-cat-8)");
 
 const CheckIcon = () => (
   <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2">

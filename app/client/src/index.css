@@ -404,6 +404,20 @@ svg text {
   color: var(--color-ink-0);
   font-weight: 600;
 }
+.page-ctx .ctx-edit {
+  border: 1px solid var(--color-line-2);
+  background: var(--color-surface);
+  color: var(--color-ink-1);
+  border-radius: 8px;
+  padding: 2px 9px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+.page-ctx .ctx-edit:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent-ink);
+}
 .page-foot {
   display: flex;
   align-items: center;
@@ -472,6 +486,38 @@ svg text {
   color: var(--color-warn);
 }
 
+/* ============================================================ RANGE INPUT
+   Custom thumb for every <input type="range"> in the app (QC depth floor,
+   rarefaction threshold, ...). */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--color-surface-3);
+  outline: none;
+  margin: 14px 0 6px;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  border: 3.5px solid var(--color-accent);
+  box-shadow: var(--shadow-2);
+  cursor: grab;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  border: 3.5px solid var(--color-accent);
+  cursor: grab;
+}
+
 /* ============================================================ FLOOR CONTROL
    The QC-depth-floor slider block on the Raw QC page. */
 .floor-ctl {
@@ -506,7 +552,7 @@ svg text {
   margin: 2px 0 4px;
   width: 100%;
 }
-.floor-slide .scale {
+.scale {
   display: flex;
   justify-content: space-between;
   font-family: var(--font-mono);
@@ -592,7 +638,11 @@ svg text {
 .opt-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 9px;
+  gap: 14px;
+  margin-top: 12px;
+}
+.opt-row:first-child {
+  margin-top: 0;
 }
 .opt {
   text-align: left;
@@ -653,6 +703,102 @@ svg text {
   color: var(--color-ink-0);
 }
 
+/* Per-sample group-assignment chip list (G1 manual mode) and the batch
+   cross-tab table (G2), both on the Design page. */
+.assign {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 12px;
+}
+.assign:empty {
+  display: none;
+}
+.assign .sid {
+  cursor: default;
+}
+.assign .sid.editable {
+  cursor: pointer;
+}
+.assign .sid.editable:hover {
+  border-color: var(--color-accent);
+}
+.sid {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--color-line);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--color-surface-2);
+}
+.sid i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+.xtab {
+  width: 100%;
+  max-width: 420px;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.xtab th,
+.xtab td {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--color-line);
+  text-align: right;
+}
+.xtab th:first-child,
+.xtab td:first-child {
+  text-align: left;
+}
+.xtab th {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-ink-3);
+  font-weight: 700;
+}
+.xtab td {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.xtab td.hot {
+  color: var(--color-warn);
+  font-weight: 700;
+}
+
+/* Three-way argument box shown at the normalization gate (G6). */
+.debate-box {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1px;
+  background: var(--color-line);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-top: 12px;
+}
+.db-side {
+  background: var(--color-surface);
+  padding: 12px 14px;
+}
+.db-side .label {
+  display: block;
+  margin-bottom: 6px;
+}
+.db-side p {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--color-ink-1);
+  margin-bottom: 8px;
+}
+
 /* ============================================================ CONF BADGE */
 .conf {
   font-family: var(--font-mono);
@@ -672,6 +818,259 @@ svg text {
 .conf.ok {
   background: var(--color-good-bg);
   color: var(--color-good);
+}
+
+/* ============================================================ AGENT CARDS
+   The reviewer's own proposal, shown as a callout distinct from a plain
+   gate-note — e.g. the rarefaction-depth proposal, or a flagged warning. */
+.agent {
+  display: flex;
+  gap: 13px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-left: 3px solid var(--color-accent);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  box-shadow: var(--shadow-1);
+}
+.agent.flagged {
+  border-left-color: var(--color-alert);
+}
+.agent .av {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 8px;
+  background: var(--color-accent);
+  color: #fff;
+  display: grid;
+  place-items: center;
+}
+.agent.flagged .av {
+  background: var(--color-alert);
+}
+.agent .av svg {
+  width: 16px;
+  height: 16px;
+}
+.agent h4 {
+  font-size: 13.5px;
+  margin-bottom: 6px;
+}
+.agent p {
+  font-size: 13px;
+  color: var(--color-ink-1);
+  line-height: 1.58;
+  max-width: 88ch;
+}
+.agent .meta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 11px;
+  flex-wrap: wrap;
+}
+.cite {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+/* ============================================================ RAREFACTION */
+.rare-grid {
+  display: grid;
+  grid-template-columns: 1fr 292px;
+  gap: 18px;
+  align-items: start;
+}
+@media (max-width: 1120px) {
+  .rare-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.slider-read {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.slider-read .v {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 25px;
+  font-weight: 660;
+  letter-spacing: -0.02em;
+}
+.slider-read .u {
+  font-size: 11.5px;
+  color: var(--color-ink-3);
+}
+.retain {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-ink-1);
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-line);
+}
+.retain b {
+  color: var(--color-ink-0);
+}
+.sids {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 11px;
+  max-height: 184px;
+  overflow-y: auto;
+}
+.sid.out {
+  opacity: 0.38;
+  text-decoration: line-through;
+}
+.curve {
+  fill: none;
+  stroke-width: 1.5;
+  transition: stroke-width 0.1s, opacity 0.15s;
+  cursor: pointer;
+}
+.curve:hover {
+  stroke-width: 3.2;
+}
+.curve.out {
+  opacity: 0.16;
+}
+.lg.line i {
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+/* ============================================================ SAMPLE DETAIL
+   The composition chart's two-column layout (chart + sticky per-sample
+   detail card), on the Alpha page. */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 258px;
+  gap: 18px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .two-col {
+    grid-template-columns: 1fr;
+  }
+}
+.detail {
+  position: sticky;
+  top: 118px;
+}
+.detail .sid-big {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 700;
+}
+.detail .grp {
+  font-size: 12px;
+  color: var(--color-ink-2);
+  margin-top: 2px;
+}
+.minis {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 13px;
+}
+.mini {
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+.mini .l {
+  font-size: 10px;
+  color: var(--color-ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-family: var(--font-mono);
+}
+.mini .v {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  font-weight: 640;
+  margin-top: 2px;
+}
+.taxa {
+  margin-top: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.taxa .r {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.taxa .r i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+}
+.taxa .r .n {
+  flex: 1;
+  color: var(--color-ink-1);
+}
+.taxa .r .p {
+  font-family: var(--font-mono);
+  color: var(--color-ink-2);
+}
+.mk {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-left: 5px;
+}
+.mk.up {
+  background: var(--color-crit-bg);
+  color: var(--color-crit);
+}
+.mk.down {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-ink);
+}
+
+/* ============================================================ DUMBBELL CHART
+   Group-mean comparison rows (Alpha diversity by group). */
+.db-row {
+  display: grid;
+  grid-template-columns: 104px 1fr 78px;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--color-line);
+}
+.db-row:last-of-type {
+  border-bottom: none;
+}
+.db-row .l {
+  font-size: 13px;
+  font-weight: 640;
+}
+.db-row .p {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-ink-3);
+  text-align: right;
+}
+.db-row .p.sig {
+  color: var(--color-good);
+  font-weight: 700;
+}
+.db-track {
+  position: relative;
+  height: 20px;
 }
 
 /* ============================================================ REVEAL

@@ -176,6 +176,7 @@ export const ALPHA_METRICS = [
 ];
 
 export const groupName = (g) => (g === "H" ? "Healthy" : "CRC");
+export const groupColor = (g) => (g === "H" ? "var(--color-cat-1)" : "var(--color-cat-8)");
 
 // ============================================================
 // REFERENCES — single source of truth, reused by every citation

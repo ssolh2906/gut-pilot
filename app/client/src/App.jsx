@@ -108,9 +108,6 @@ function AppShell() {
           <div className="flex items-center gap-2.5 min-w-0">
             <BrandMark />
             <b className="text-[14.5px] font-semibold tracking-tight whitespace-nowrap">Gut Pilot</b>
-            <span className="text-[10.5px] font-mono text-ink-3 border-l border-line-2 pl-2.5 ml-0.5 whitespace-nowrap">
-              THE SKEPTICAL REVIEWER
-            </span>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <div className="ds-chip">
