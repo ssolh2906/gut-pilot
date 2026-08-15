@@ -653,6 +653,76 @@ svg text {
   color: var(--color-ink-0);
 }
 
+/* Per-sample group-assignment chip list (G1 manual mode) and the batch
+   cross-tab table (G2), both on the Design page. */
+.assign {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 12px;
+}
+.assign:empty {
+  display: none;
+}
+.assign .sid {
+  cursor: default;
+}
+.assign .sid.editable {
+  cursor: pointer;
+}
+.assign .sid.editable:hover {
+  border-color: var(--color-accent);
+}
+.sid {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--color-line);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--color-surface-2);
+}
+.sid i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+.xtab {
+  width: 100%;
+  max-width: 420px;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.xtab th,
+.xtab td {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--color-line);
+  text-align: right;
+}
+.xtab th:first-child,
+.xtab td:first-child {
+  text-align: left;
+}
+.xtab th {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-ink-3);
+  font-weight: 700;
+}
+.xtab td {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.xtab td.hot {
+  color: var(--color-warn);
+  font-weight: 700;
+}
+
 /* ============================================================ CONF BADGE */
 .conf {
   font-family: var(--font-mono);
