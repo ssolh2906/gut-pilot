@@ -404,6 +404,20 @@ svg text {
   color: var(--color-ink-0);
   font-weight: 600;
 }
+.page-ctx .ctx-edit {
+  border: 1px solid var(--color-line-2);
+  background: var(--color-surface);
+  color: var(--color-ink-1);
+  border-radius: 8px;
+  padding: 2px 9px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+.page-ctx .ctx-edit:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent-ink);
+}
 .page-foot {
   display: flex;
   align-items: center;
@@ -929,6 +943,134 @@ input[type="range"]::-moz-range-thumb {
   width: 16px;
   height: 3px;
   border-radius: 2px;
+}
+
+/* ============================================================ SAMPLE DETAIL
+   The composition chart's two-column layout (chart + sticky per-sample
+   detail card), on the Alpha page. */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 258px;
+  gap: 18px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .two-col {
+    grid-template-columns: 1fr;
+  }
+}
+.detail {
+  position: sticky;
+  top: 118px;
+}
+.detail .sid-big {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 700;
+}
+.detail .grp {
+  font-size: 12px;
+  color: var(--color-ink-2);
+  margin-top: 2px;
+}
+.minis {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 13px;
+}
+.mini {
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+.mini .l {
+  font-size: 10px;
+  color: var(--color-ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-family: var(--font-mono);
+}
+.mini .v {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  font-weight: 640;
+  margin-top: 2px;
+}
+.taxa {
+  margin-top: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.taxa .r {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.taxa .r i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+}
+.taxa .r .n {
+  flex: 1;
+  color: var(--color-ink-1);
+}
+.taxa .r .p {
+  font-family: var(--font-mono);
+  color: var(--color-ink-2);
+}
+.mk {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-left: 5px;
+}
+.mk.up {
+  background: var(--color-crit-bg);
+  color: var(--color-crit);
+}
+.mk.down {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-ink);
+}
+
+/* ============================================================ DUMBBELL CHART
+   Group-mean comparison rows (Alpha diversity by group). */
+.db-row {
+  display: grid;
+  grid-template-columns: 104px 1fr 78px;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--color-line);
+}
+.db-row:last-of-type {
+  border-bottom: none;
+}
+.db-row .l {
+  font-size: 13px;
+  font-weight: 640;
+}
+.db-row .p {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-ink-3);
+  text-align: right;
+}
+.db-row .p.sig {
+  color: var(--color-good);
+  font-weight: 700;
+}
+.db-track {
+  position: relative;
+  height: 20px;
 }
 
 /* ============================================================ REVEAL
