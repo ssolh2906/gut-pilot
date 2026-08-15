@@ -592,7 +592,11 @@ svg text {
 .opt-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 9px;
+  gap: 14px;
+  margin-top: 12px;
+}
+.opt-row:first-child {
+  margin-top: 0;
 }
 .opt {
   text-align: left;
