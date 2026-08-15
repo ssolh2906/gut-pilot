@@ -6,6 +6,11 @@ __pycache__/
 # mypy
 data/
 
+# Node.js
+node_modules/
+npm-debug.log*
+.vite/
+
 # C extensions
 *.so
 
