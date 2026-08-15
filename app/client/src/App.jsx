@@ -1,6 +1,12 @@
 import { useState } from "react";
 import UploadPage from "./pages/UploadPage";
+import DesignPage from "./pages/DesignPage";
 import QcPage from "./pages/QcPage";
+import NormalizationPage from "./pages/NormalizationPage";
+import AlphaPage from "./pages/AlphaPage";
+import BetaPage from "./pages/BetaPage";
+import DaPage from "./pages/DaPage";
+import RefsPage from "./pages/RefsPage";
 import Tooltip from "./components/Tooltip";
 import DecisionLogDrawer from "./components/DecisionLog";
 import FloatingChat from "./components/FloatingChat";
@@ -92,7 +98,6 @@ function AppShell() {
   const { state } = useAppState();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const toggleTheme = useTheme();
-  const currentPage = PAGES.find((p) => p.id === state.currentPage);
 
   return (
     <div className="min-h-screen">
@@ -126,10 +131,13 @@ function AppShell() {
 
       <div className="max-w-[1480px] mx-auto px-5 py-6.5 pb-30">
         {state.currentPage === "upload" && <UploadPage />}
+        {state.currentPage === "design" && <DesignPage />}
         {state.currentPage === "qc" && <QcPage />}
-        {state.currentPage !== "upload" && state.currentPage !== "qc" && (
-          <div className="text-ink-2 text-sm">Page "{currentPage.label}" — not built yet.</div>
-        )}
+        {state.currentPage === "rarefy" && <NormalizationPage />}
+        {state.currentPage === "alpha" && <AlphaPage />}
+        {state.currentPage === "beta" && <BetaPage />}
+        {state.currentPage === "da" && <DaPage />}
+        {state.currentPage === "refs" && <RefsPage />}
       </div>
 
       <DecisionLogDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} log={state.log} />
