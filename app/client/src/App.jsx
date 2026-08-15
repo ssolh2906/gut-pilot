@@ -2,6 +2,7 @@ import { useState } from "react";
 import UploadPage from "./pages/UploadPage";
 import Tooltip from "./components/Tooltip";
 import DecisionLogDrawer from "./components/DecisionLog";
+import FloatingChat from "./components/FloatingChat";
 import { AppStateProvider, useAppState } from "./state/AppStateContext";
 import { PAGES } from "./lib/pages";
 import { samples } from "./lib/data";
@@ -130,6 +131,7 @@ function AppShell() {
       </div>
 
       <DecisionLogDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} log={state.log} />
+      <FloatingChat />
     </div>
   );
 }

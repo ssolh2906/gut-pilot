@@ -2,9 +2,11 @@
 //
 // This is a demo upload: there's no real backend yet (that's next: Python +
 // FastAPI, with the reviewer's reasoning driven by the Claude SDK). Clicking
-// browse/drop/send just plays the mock's staged progress animation, then
-// records the first decision-log entry and advances to Study design — same
-// as the mock's runUpload().
+// browse/drop just plays the mock's staged progress animation, then records
+// the first decision-log entry and advances to Study design — same as the
+// mock's runUpload(). The mock's inline "ask the reviewer" box and
+// suggestion chips live in the floating chat widget instead (see
+// components/FloatingChat.jsx) — this page no longer has its own.
 import { useRef, useState } from "react";
 import { useAppState } from "../state/AppStateContext";
 
@@ -13,13 +15,6 @@ const SCHEMA_ITEMS = [
   <>Columns 2 to N are integer counts, one per sample</>,
   <>An optional trailing <span className="font-mono">total</span> column is dropped on load</>,
   <>Optional <span className="font-mono">metadata.tsv</span> with <span className="font-mono">sample_id, group, batch</span></>,
-];
-
-const SUGGESTION_CHIPS = [
-  "Flag low-depth samples",
-  "Check for kit contamination",
-  "Compare Healthy against CRC",
-  "Recommend a rarefaction depth",
 ];
 
 const CheckIcon = () => (
@@ -37,19 +32,12 @@ const UploadIcon = () => (
     <path d="M12 12v6m0-6 2.6 2.6M12 12 9.4 14.6" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
-const AskIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-4 h-4 text-ink-3 flex-none">
-    <path d="M4 4h16v12H8l-4 4V4Z" strokeLinejoin="round" />
-  </svg>
-);
-
 export default function UploadPage() {
   const { actions } = useAppState();
   const [fileName, setFileName] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [askValue, setAskValue] = useState("");
   const inputRef = useRef(null);
   const timerRef = useRef(null);
 
@@ -167,31 +155,6 @@ export default function UploadPage() {
             </div>
           </div>
         </div>
-      </div>
-
-      <div className="flex gap-2.5 items-center bg-surface border border-line-2 rounded-xl pl-3.5 pr-1.5 py-1.5">
-        <AskIcon />
-        <input
-          type="text"
-          value={askValue}
-          onChange={(e) => setAskValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") runUpload();
-          }}
-          placeholder="Optional. Tell the reviewer what to watch for, for example flag low-depth samples"
-          className="flex-1 bg-transparent outline-none text-sm placeholder:text-ink-3 min-w-0"
-        />
-        <button type="button" className="btn btn-quiet btn-sm" onClick={() => runUpload()}>
-          Send
-        </button>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        {SUGGESTION_CHIPS.map((label) => (
-          <button key={label} type="button" className="chip" onClick={() => setAskValue(label)}>
-            {label}
-          </button>
-        ))}
       </div>
 
       {fileName && !isUploading && <div className="text-xs font-mono text-ink-2">Selected: {fileName}</div>}

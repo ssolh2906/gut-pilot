@@ -302,6 +302,17 @@ svg text {
   flex: none;
 }
 
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.dock-chips {
+  margin-bottom: 10px;
+}
+.dock-chips:empty {
+  display: none;
+}
 .chip {
   font-size: 12px;
   padding: 6px 12px;
@@ -949,6 +960,144 @@ svg text {
 .drawer-foot {
   padding: 12px 18px;
   border-top: 1px solid var(--color-line);
+}
+
+/* ============================================================ FLOATING CHAT
+   One persistent launcher + panel for talking to the reviewer, mounted once
+   at the app root so it survives page navigation. Replaces the mock's
+   per-page "ask" boxes and embedded AI docks with a single conversation. */
+.chat-launcher {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 100;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--color-accent);
+  color: #fff;
+  border: none;
+  box-shadow: var(--shadow-3);
+  transition: background 0.13s, transform 0.15s;
+}
+.chat-launcher:hover {
+  background: var(--color-accent-ink);
+}
+.chat-launcher:active {
+  transform: scale(0.96);
+}
+.chat-launcher svg {
+  width: 24px;
+  height: 24px;
+}
+
+.chat-panel {
+  position: fixed;
+  right: 20px;
+  bottom: 88px;
+  z-index: 99;
+  width: min(380px, calc(100vw - 40px));
+  height: min(560px, calc(100dvh - 120px));
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-2);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(12px) scale(0.98);
+  pointer-events: none;
+  transition: opacity 0.16s, transform 0.16s;
+  transform-origin: bottom right;
+}
+.chat-panel.open {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-panel {
+    transition: none;
+  }
+}
+.chat-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--color-line);
+  flex: none;
+}
+.chat-panel-head b {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 660;
+}
+.chat-panel-head span {
+  display: block;
+  font-size: 11.5px;
+  color: var(--color-ink-2);
+  margin-top: 1px;
+}
+.chat-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.chat-empty {
+  font-size: 12.5px;
+  color: var(--color-ink-2);
+  line-height: 1.55;
+}
+.chat-row {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--color-line);
+  flex: none;
+}
+.chat-row input {
+  flex: 1;
+  min-width: 0;
+  border-radius: 8px;
+  border: 1px solid var(--color-line-2);
+  background: var(--color-surface);
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--color-ink-0);
+  outline: none;
+}
+.chat-row input::placeholder {
+  color: var(--color-ink-3);
+}
+.chat-row input:focus {
+  border-color: var(--color-accent);
+}
+.chat-send {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--color-accent);
+  color: #fff;
+  border: none;
+}
+.chat-send:hover {
+  background: var(--color-accent-ink);
+}
+.chat-send:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
 }
 
 .flash {
