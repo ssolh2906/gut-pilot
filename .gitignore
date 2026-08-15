@@ -219,3 +219,8 @@ __marimo__/
 
 data/raw_data/*
 !data/raw_data/.gitkeep
+
+# .gitignore
+.DS_Store
+app/.DS_Store
+
