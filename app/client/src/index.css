@@ -2,8 +2,17 @@
 
 /*
   Design tokens ported from gut-pilot_mock_260814.html (the north-star mock).
-  This is a flatter, more utilitarian palette than the first mock — no
-  glassmorphism, tighter shadows, a single blue accent.
+  Colors live inside @theme so Tailwind emits both the CSS custom property
+  (var(--color-x), used directly in SVG fill attributes and gradients) and
+  the matching utility classes (bg-x, text-x, border-x, ...).
+
+  Dark mode does NOT use Tailwind's `dark:` variant. It follows the mock:
+  the same --color-* custom properties are redefined under
+  :root[data-theme="dark"] (explicit toggle) and under
+  @media (prefers-color-scheme: dark) for :root:not([data-theme="light"])
+  (system default, unless overridden). Because every utility class already
+  reads from these properties at paint time, no component needs a dark:
+  variant anywhere — overriding the token is enough.
 */
 @theme {
   --color-bg: #f4f6f9;
@@ -12,7 +21,7 @@
   --color-surface-2: #f7f8fb;
   --color-surface-3: #eef1f6;
 
-  --color-line: rgba(16, 24, 40, 0.10);
+  --color-line: rgba(16, 24, 40, 0.1);
   --color-line-2: rgba(16, 24, 40, 0.17);
 
   --color-ink-0: #0f1729;
@@ -23,6 +32,7 @@
   --color-accent: #1f6feb;
   --color-accent-ink: #14509c;
   --color-accent-soft: #e7f0fe;
+  --color-accent-line: rgba(31, 111, 235, 0.34);
 
   --color-good: #0f8a4d;
   --color-good-bg: #e3f6ec;
@@ -33,11 +43,135 @@
   --color-crit: #c02f2f;
   --color-crit-bg: #fbe2e2;
 
+  --color-grid: #e6e9ef;
+  --color-axis: #c3c9d6;
+
+  --color-cat-1: #1f6feb;
+  --color-cat-2: #e2662f;
+  --color-cat-3: #12a17a;
+  --color-cat-4: #d99500;
+  --color-cat-5: #d9739f;
+  --color-cat-6: #2f8f2f;
+  --color-cat-7: #6a5acd;
+  --color-cat-8: #d94141;
+  --color-cat-9: #a4adbe;
+
+  --color-div-lo: #1f6feb;
+  --color-div-mid: #a4adbe;
+  --color-div-hi: #d94141;
+  --color-seq-lo: #eef3fc;
+  --color-seq-hi: #14509c;
+
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Consolas, monospace;
 
+  --radius-md: 12px;
+  --radius-lg: 16px;
+
   --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.05);
   --shadow-2: 0 1px 2px rgba(16, 24, 40, 0.05), 0 8px 24px -12px rgba(16, 24, 40, 0.22);
+  --shadow-3: 0 2px 4px rgba(16, 24, 40, 0.06), 0 24px 48px -18px rgba(16, 24, 40, 0.34);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg: #0b1017;
+  --color-bg-rail: #0e141d;
+  --color-surface: #141b26;
+  --color-surface-2: #101822;
+  --color-surface-3: #1b2432;
+
+  --color-line: rgba(255, 255, 255, 0.09);
+  --color-line-2: rgba(255, 255, 255, 0.17);
+
+  --color-ink-0: #eef2f8;
+  --color-ink-1: #c3cbdb;
+  --color-ink-2: #8e99ae;
+  --color-ink-3: #6b7689;
+
+  --color-accent: #4d94f5;
+  --color-accent-ink: #8fbdfa;
+  --color-accent-soft: #152540;
+  --color-accent-line: rgba(77, 148, 245, 0.42);
+
+  --color-good: #3bbd72;
+  --color-good-bg: #0f2c1e;
+  --color-warn: #d69b2c;
+  --color-warn-bg: #332508;
+  --color-alert: #e08055;
+  --color-alert-bg: #361a11;
+  --color-crit: #e35b5b;
+  --color-crit-bg: #361414;
+
+  --color-grid: #1e2836;
+  --color-axis: #39465a;
+
+  --color-cat-1: #4d94f5;
+  --color-cat-2: #ef8451;
+  --color-cat-3: #2ec295;
+  --color-cat-4: #e0ab35;
+  --color-cat-5: #ec8fb4;
+  --color-cat-6: #4fb54f;
+  --color-cat-7: #9d90f0;
+  --color-cat-8: #e35b5b;
+  --color-cat-9: #5c687d;
+
+  --color-div-lo: #4d94f5;
+  --color-div-mid: #5c687d;
+  --color-div-hi: #e35b5b;
+  --color-seq-lo: #131e2e;
+  --color-seq-hi: #79b0f8;
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.7);
+  --shadow-3: 0 2px 4px rgba(0, 0, 0, 0.5), 0 24px 48px -18px rgba(0, 0, 0, 0.8);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --color-bg: #0b1017;
+    --color-bg-rail: #0e141d;
+    --color-surface: #141b26;
+    --color-surface-2: #101822;
+    --color-surface-3: #1b2432;
+    --color-line: rgba(255, 255, 255, 0.09);
+    --color-line-2: rgba(255, 255, 255, 0.17);
+    --color-ink-0: #eef2f8;
+    --color-ink-1: #c3cbdb;
+    --color-ink-2: #8e99ae;
+    --color-ink-3: #6b7689;
+    --color-accent: #4d94f5;
+    --color-accent-ink: #8fbdfa;
+    --color-accent-soft: #152540;
+    --color-accent-line: rgba(77, 148, 245, 0.42);
+    --color-good: #3bbd72;
+    --color-good-bg: #0f2c1e;
+    --color-warn: #d69b2c;
+    --color-warn-bg: #332508;
+    --color-alert: #e08055;
+    --color-alert-bg: #361a11;
+    --color-crit: #e35b5b;
+    --color-crit-bg: #361414;
+    --color-grid: #1e2836;
+    --color-axis: #39465a;
+    --color-cat-1: #4d94f5;
+    --color-cat-2: #ef8451;
+    --color-cat-3: #2ec295;
+    --color-cat-4: #e0ab35;
+    --color-cat-5: #ec8fb4;
+    --color-cat-6: #4fb54f;
+    --color-cat-7: #9d90f0;
+    --color-cat-8: #e35b5b;
+    --color-cat-9: #5c687d;
+    --color-div-lo: #4d94f5;
+    --color-div-mid: #5c687d;
+    --color-div-hi: #e35b5b;
+    --color-seq-lo: #131e2e;
+    --color-seq-hi: #79b0f8;
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.7);
+    --shadow-3: 0 2px 4px rgba(0, 0, 0, 0.5), 0 24px 48px -18px rgba(0, 0, 0, 0.8);
+  }
 }
 
 body {
@@ -47,18 +181,1131 @@ body {
   background: var(--color-bg);
   -webkit-font-smoothing: antialiased;
 }
+svg text {
+  font-family: var(--font-mono);
+  fill: var(--color-ink-2);
+}
+::selection {
+  background: var(--color-accent-soft);
+  color: var(--color-ink-0);
+}
 
-/* Reused "gate" note style from the mock — decision explanations */
+/* Small utility classes used inside app-generated HTML strings (gate notes,
+   floor notes, ...) where Tailwind's `font-mono` isn't reachable because the
+   markup is built as a raw string, not JSX. */
+.mono {
+  font-family: var(--font-mono);
+}
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================ BUTTONS */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  white-space: nowrap;
+  padding: 9px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 640;
+  border: 1px solid var(--color-line-2);
+  background: var(--color-surface);
+  color: var(--color-ink-0);
+  transition: background 0.13s, border-color 0.13s, transform 0.1s;
+}
+.btn:hover {
+  background: var(--color-surface-3);
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.btn-primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+.btn-primary:hover {
+  background: var(--color-accent-ink);
+  border-color: var(--color-accent-ink);
+}
+.btn-quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--color-ink-2);
+}
+.btn-quiet:hover {
+  background: var(--color-surface-3);
+  color: var(--color-ink-0);
+}
+.btn-sm {
+  padding: 6px 11px;
+  font-size: 12px;
+  border-radius: 8px;
+}
+.btn-lg {
+  padding: 11px 20px;
+  font-size: 13.5px;
+}
+.btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.icon-btn {
+  height: 30px;
+  min-width: 30px;
+  padding: 0 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--color-line-2);
+  background: var(--color-surface);
+  color: var(--color-ink-1);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.icon-btn:hover {
+  background: var(--color-surface-3);
+  color: var(--color-ink-0);
+}
+.icon-btn svg {
+  width: 14px;
+  height: 14px;
+}
+.icon-btn .badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  background: var(--color-accent);
+  color: #fff;
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+.ds-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--color-ink-1);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-line);
+  padding: 5px 11px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.ds-chip i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-good);
+  flex: none;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.dock-chips {
+  margin-bottom: 10px;
+}
+.dock-chips:empty {
+  display: none;
+}
+.chip {
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--color-line);
+  background: var(--color-surface);
+  color: var(--color-ink-2);
+}
+.chip:hover {
+  border-color: var(--color-accent-line);
+  color: var(--color-accent-ink);
+  background: var(--color-accent-soft);
+}
+.chip[aria-pressed="true"] {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-ink);
+  font-weight: 700;
+}
+
+.bar-track {
+  height: 5px;
+  border-radius: 999px;
+  background: var(--color-surface-3);
+  overflow: hidden;
+  width: 230px;
+}
+.bar-fill {
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: 999px;
+  transition: width 0.16s linear;
+}
+
+.label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--color-ink-3);
+  font-weight: 600;
+}
+
+/* ============================================================ PAGE LAYOUT
+   Header/footer chrome shared by every analysis page, plus the small
+   stat-card row used on the QC page. */
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.page-head h1 {
+  font-size: 22px;
+  letter-spacing: -0.02em;
+}
+.page-head .lede {
+  color: var(--color-ink-2);
+  font-size: 13.5px;
+  margin-top: 5px;
+  max-width: 74ch;
+}
+.page-ctx {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--color-ink-2);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  padding: 9px 14px;
+}
+.page-ctx b {
+  color: var(--color-ink-0);
+  font-weight: 600;
+}
+.page-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--color-line);
+  padding-top: 18px;
+  margin-top: 2px;
+}
+.page-foot .hint {
+  font-size: 12.5px;
+  color: var(--color-ink-2);
+  max-width: 62ch;
+}
+.stats {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+@media (max-width: 1080px) {
+  .stats {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+@media (max-width: 620px) {
+  .stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+.stat {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  padding: 13px 15px;
+}
+.stat .label {
+  display: block;
+  margin-bottom: 7px;
+}
+.stat .v {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 23px;
+  font-weight: 640;
+  letter-spacing: -0.02em;
+}
+.stat .v.sm {
+  font-size: 17px;
+}
+.stat .u {
+  font-size: 11.5px;
+  color: var(--color-ink-3);
+  margin-left: 4px;
+}
+.stat .tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 640;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--color-warn-bg);
+  color: var(--color-warn);
+}
+
+/* ============================================================ FLOOR CONTROL
+   The QC-depth-floor slider block on the Raw QC page. */
+.floor-ctl {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 20px;
+}
+@media (max-width: 900px) {
+  .floor-ctl {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+.floor-read .label {
+  display: block;
+  margin-bottom: 3px;
+}
+.floor-read .v {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 21px;
+  font-weight: 660;
+  letter-spacing: -0.02em;
+}
+.floor-read .u {
+  font-size: 11.5px;
+  color: var(--color-ink-3);
+  margin-left: 5px;
+}
+.floor-slide input[type="range"] {
+  margin: 2px 0 4px;
+  width: 100%;
+}
+.floor-slide .scale {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--color-ink-3);
+}
+.floor-presets {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.floor-presets .chip {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 5px 10px;
+}
+.floor-note {
+  border-left: 3px solid var(--color-line-2);
+  background: var(--color-surface-2);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  font-size: 12.5px;
+  color: var(--color-ink-2);
+  line-height: 1.5;
+}
+.floor-note.warn {
+  border-left-color: var(--color-warn);
+  background: var(--color-warn-bg);
+  color: var(--color-ink-1);
+}
+.floor-note b {
+  font-weight: 660;
+  color: var(--color-ink-0);
+}
+.floor-note .mono {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+/* ============================================================ BLOCKS
+   The base container used by nearly every panel: a bordered card with a
+   head (title + optional right-side control) and a body. */
+.block {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+}
+.block-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 18px 12px;
+  flex-wrap: wrap;
+}
+.block-head h2,
+.block-head h3 {
+  font-size: 14.5px;
+}
+.block-head .sub {
+  font-size: 12.5px;
+  color: var(--color-ink-2);
+  margin-top: 4px;
+  max-width: 80ch;
+}
+.block-body {
+  padding: 0 18px 18px;
+}
+.block-body.pad-t {
+  padding-top: 14px;
+}
+
+/* ============================================================ GATES
+   A "gate" is a decision the reviewer proposes and the user confirms —
+   used on Design, Rarefaction, Alpha (stats), Beta and DA (prevalence). */
+.gate {
+  border-left: 3px solid var(--color-accent-line);
+}
+.gate.resolved {
+  border-left-color: var(--color-good);
+}
+.opt-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 9px;
+}
+.opt {
+  text-align: left;
+  padding: 11px 13px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--color-line);
+  background: var(--color-surface-2);
+  color: var(--color-ink-0);
+  transition: border-color 0.13s, background 0.13s;
+}
+.opt:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+.opt[aria-pressed="true"] {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+.opt[aria-pressed="true"] b {
+  color: var(--color-accent-ink);
+}
+.opt:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.opt b {
+  display: block;
+  font-size: 13px;
+  font-weight: 640;
+}
+.opt span {
+  display: block;
+  font-size: 11.5px;
+  color: var(--color-ink-2);
+  margin-top: 3px;
+  line-height: 1.45;
+}
 .gate-note {
   font-size: 12.5px;
   line-height: 1.6;
   color: var(--color-ink-1);
-  border-left: 2px solid var(--color-accent);
+  margin-top: 12px;
+  border-left: 2px solid var(--color-accent-line);
   background: var(--color-surface-2);
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 10px 13px;
 }
 .gate-note.warn {
   border-left-color: var(--color-warn);
   background: var(--color-warn-bg);
+}
+.gate-note.good {
+  border-left-color: var(--color-good);
+  background: var(--color-good-bg);
+}
+.gate-note b {
+  font-weight: 660;
+  color: var(--color-ink-0);
+}
+
+/* ============================================================ CONF BADGE */
+.conf {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent-ink);
+  white-space: nowrap;
+}
+.conf.warn {
+  background: var(--color-warn-bg);
+  color: var(--color-warn);
+}
+.conf.ok {
+  background: var(--color-good-bg);
+  color: var(--color-good);
+}
+
+/* ============================================================ REVEAL
+   The "run the next step" button pattern used to progressively disclose
+   each page's content instead of showing it all at once. */
+.reveal {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  padding: 15px 18px;
+  border-radius: var(--radius-lg);
+  border: 1.5px dashed var(--color-line-2);
+  background: var(--color-surface-2);
+  color: var(--color-ink-0);
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+}
+.reveal:hover {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+.reveal:active {
+  transform: translateY(1px);
+}
+.reveal .rv-mark {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--color-accent);
+  color: #fff;
+}
+.reveal .rv-mark svg {
+  width: 14px;
+  height: 14px;
+}
+.reveal .rv-txt b {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 640;
+}
+.reveal .rv-txt span {
+  display: block;
+  font-size: 12px;
+  color: var(--color-ink-2);
+  margin-top: 2px;
+}
+.reveal .rv-key {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--color-ink-3);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  padding: 3px 8px;
+  background: var(--color-surface);
+  white-space: nowrap;
+}
+.reveal.running {
+  pointer-events: none;
+  border-style: solid;
+  border-color: var(--color-accent-line);
+}
+.reveal .rv-bar {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 0;
+  background: var(--color-accent);
+  border-radius: 999px;
+}
+.reveal.running .rv-bar {
+  width: 100%;
+  transition: width 0.62s cubic-bezier(0.5, 0.05, 0.3, 1);
+}
+.appear {
+  animation: appear 0.34s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes appear {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .appear {
+    animation: none;
+  }
+  .reveal.running .rv-bar {
+    transition: none;
+    width: 100%;
+  }
+}
+
+/* ============================================================ CHART PLUMBING */
+.chart-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.dl {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 4px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--color-line);
+  background: var(--color-surface-2);
+  color: var(--color-ink-2);
+}
+.dl:hover {
+  border-color: var(--color-accent-line);
+  color: var(--color-accent-ink);
+  background: var(--color-accent-soft);
+}
+.dl svg {
+  width: 11px;
+  height: 11px;
+}
+.plot {
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.plot svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.plot.wide svg {
+  min-width: 640px;
+}
+.ax {
+  stroke: var(--color-axis);
+  stroke-width: 1;
+}
+.gl {
+  stroke: var(--color-grid);
+  stroke-width: 1;
+}
+.bar {
+  transition: opacity 0.1s;
+  cursor: pointer;
+}
+.bar:hover {
+  opacity: 0.7;
+}
+.dot {
+  cursor: pointer;
+  transition: r 0.1s;
+}
+.pt:hover .dot {
+  r: 8.5;
+}
+.curve {
+  fill: none;
+  stroke-width: 1.5;
+  transition: stroke-width 0.1s, opacity 0.15s;
+  cursor: pointer;
+}
+.curve:hover {
+  stroke-width: 3.2;
+}
+.curve.out {
+  opacity: 0.16;
+}
+.cell {
+  cursor: pointer;
+}
+.cell.hot {
+  stroke: var(--color-ink-0);
+  stroke-width: 1.6;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px 16px;
+  margin-top: 12px;
+}
+.lg {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  color: var(--color-ink-1);
+}
+.lg i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+}
+.lg.line i {
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+}
+.lg.dot i {
+  border-radius: 50%;
+}
+
+/* ============================================================ TOOLTIP */
+.tip {
+  position: fixed;
+  z-index: 90;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -100%) translateY(-10px);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-2);
+  box-shadow: var(--shadow-3);
+  border-radius: var(--radius-md);
+  padding: 8px 11px;
+  max-width: 280px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--color-ink-1);
+  transition: opacity 0.1s;
+}
+.tip.on {
+  opacity: 1;
+}
+.tip b {
+  display: block;
+  font-size: 12.5px;
+  color: var(--color-ink-0);
+  font-weight: 660;
+  margin-bottom: 3px;
+}
+.tip .kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.tip .kv span:first-child {
+  color: var(--color-ink-3);
+}
+.tip .note {
+  margin-top: 4px;
+  color: var(--color-warn);
+  font-size: 11px;
+}
+
+/* ============================================================ CHECKLIST */
+.checks {
+  display: flex;
+  flex-direction: column;
+}
+.check {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-line);
+}
+.check:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.check:first-child {
+  padding-top: 0;
+}
+.check svg {
+  width: 17px;
+  height: 17px;
+  flex: none;
+  margin-top: 1px;
+}
+.check.ok svg {
+  color: var(--color-good);
+}
+.check.warn svg {
+  color: var(--color-warn);
+}
+.check b {
+  font-size: 13px;
+  font-weight: 640;
+}
+.check p {
+  font-size: 12.5px;
+  color: var(--color-ink-2);
+  margin-top: 2px;
+}
+
+/* ============================================================ AI DOCK CHAT */
+.bub {
+  max-width: 82%;
+  padding: 10px 13px;
+  border-radius: var(--radius-md);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.bub.me {
+  align-self: flex-end;
+  background: var(--color-accent);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+.bub.ai {
+  align-self: flex-start;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-line);
+  color: var(--color-ink-1);
+  border-bottom-left-radius: 4px;
+}
+.bub.me a {
+  color: #fff;
+}
+.bub.ai a {
+  color: var(--color-accent-ink);
+}
+.typing {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 2px 0;
+}
+.typing i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-ink-3);
+  animation: blink 1.1s infinite ease-in-out;
+}
+.typing i:nth-child(2) {
+  animation-delay: 0.16s;
+}
+.typing i:nth-child(3) {
+  animation-delay: 0.32s;
+}
+@keyframes blink {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .typing i {
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
+/* ============================================================ TIMELINE
+   Shared by the decision-log drawer and the run-summary page. */
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.tl {
+  position: relative;
+  padding: 13px 0 13px 22px;
+  border-left: 1.5px solid var(--color-line-2);
+  margin-left: 5px;
+}
+.tl:last-child {
+  padding-bottom: 0;
+}
+.tl::before {
+  content: "";
+  position: absolute;
+  left: -6.5px;
+  top: 17px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  border: 2px solid var(--color-accent);
+}
+.tl.human::before {
+  border-color: var(--color-good);
+  background: var(--color-good);
+}
+.tl .st {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--color-ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.tl p {
+  font-size: 12.5px;
+  color: var(--color-ink-1);
+  line-height: 1.55;
+  margin-top: 3px;
+}
+.tl .r2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 7px;
+  flex-wrap: wrap;
+}
+.tl .r2 .conf {
+  font-size: 10px;
+  padding: 2px 7px;
+}
+
+/* ============================================================ DRAWER */
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 16, 26, 0.42);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+  z-index: 70;
+}
+.scrim.on {
+  opacity: 1;
+  pointer-events: auto;
+}
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100dvh;
+  width: min(400px, 92vw);
+  z-index: 80;
+  background: var(--color-surface);
+  border-left: 1px solid var(--color-line-2);
+  box-shadow: var(--shadow-3);
+  transform: translateX(102%);
+  transition: transform 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+}
+.drawer.open {
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .drawer {
+    transition: none;
+  }
+}
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--color-line);
+}
+.drawer-head h3 {
+  font-size: 14px;
+}
+.drawer-body {
+  overflow-y: auto;
+  padding: 8px 18px 24px;
+  flex: 1;
+}
+.drawer-foot {
+  padding: 12px 18px;
+  border-top: 1px solid var(--color-line);
+}
+
+/* ============================================================ FLOATING CHAT
+   One persistent launcher + panel for talking to the reviewer, mounted once
+   at the app root so it survives page navigation. Replaces the mock's
+   per-page "ask" boxes and embedded AI docks with a single conversation. */
+.chat-launcher {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 100;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--color-accent);
+  color: #fff;
+  border: none;
+  box-shadow: var(--shadow-3);
+  transition: background 0.13s, transform 0.15s;
+}
+.chat-launcher:hover {
+  background: var(--color-accent-ink);
+}
+.chat-launcher:active {
+  transform: scale(0.96);
+}
+.chat-launcher svg {
+  width: 24px;
+  height: 24px;
+}
+
+.chat-panel {
+  position: fixed;
+  right: 20px;
+  bottom: 88px;
+  z-index: 99;
+  width: min(380px, calc(100vw - 40px));
+  height: min(560px, calc(100dvh - 120px));
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-2);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(12px) scale(0.98);
+  pointer-events: none;
+  transition: opacity 0.16s, transform 0.16s;
+  transform-origin: bottom right;
+}
+.chat-panel.open {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-panel {
+    transition: none;
+  }
+}
+.chat-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--color-line);
+  flex: none;
+}
+.chat-panel-head b {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 660;
+}
+.chat-panel-head span {
+  display: block;
+  font-size: 11.5px;
+  color: var(--color-ink-2);
+  margin-top: 1px;
+}
+.chat-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.chat-empty {
+  font-size: 12.5px;
+  color: var(--color-ink-2);
+  line-height: 1.55;
+}
+.chat-row {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--color-line);
+  flex: none;
+}
+.chat-row input {
+  flex: 1;
+  min-width: 0;
+  border-radius: 8px;
+  border: 1px solid var(--color-line-2);
+  background: var(--color-surface);
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--color-ink-0);
+  outline: none;
+}
+.chat-row input::placeholder {
+  color: var(--color-ink-3);
+}
+.chat-row input:focus {
+  border-color: var(--color-accent);
+}
+.chat-send {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--color-accent);
+  color: #fff;
+  border: none;
+}
+.chat-send:hover {
+  background: var(--color-accent-ink);
+}
+.chat-send:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.flash {
+  animation: flash 1.4s ease;
+}
+@keyframes flash {
+  0%,
+  100% {
+    box-shadow: none;
+  }
+  18% {
+    box-shadow: 0 0 0 3px var(--color-accent-line);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .flash {
+    animation: none;
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
 }

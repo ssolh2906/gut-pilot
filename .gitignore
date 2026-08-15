@@ -6,6 +6,11 @@ __pycache__/
 # mypy
 data/
 
+# Node.js
+node_modules/
+npm-debug.log*
+.vite/
+
 # C extensions
 *.so
 
@@ -226,4 +231,9 @@ data/raw_data/*
 # .gitignore
 .DS_Store
 app/.DS_Store
+
+# The Python "lib/" rule above (from Python's build/packaging ignores)
+# also matches the frontend's src/lib/ — its shared helpers, not a build
+# output — so it needs an explicit exception.
+!app/client/src/lib/
 
