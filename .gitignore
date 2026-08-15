@@ -227,3 +227,8 @@ data/raw_data/*
 .DS_Store
 app/.DS_Store
 
+# The Python "lib/" rule above (from Python's build/packaging ignores)
+# also matches the frontend's src/lib/ — its shared helpers, not a build
+# output — so it needs an explicit exception.
+!app/client/src/lib/
+

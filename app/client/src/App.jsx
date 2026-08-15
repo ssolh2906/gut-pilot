@@ -1,92 +1,143 @@
 import { useState } from "react";
 import UploadPage from "./pages/UploadPage";
+import Tooltip from "./components/Tooltip";
+import DecisionLogDrawer from "./components/DecisionLog";
+import { AppStateProvider, useAppState } from "./state/AppStateContext";
+import { PAGES } from "./lib/pages";
+import { samples } from "./lib/data";
 
-// The full page list from the mock, in order. `locked` pages can't be
-// clicked into until the flow reaches them — matches the mock's
-// .ptab:disabled behavior.
-const PAGES = [
-  { key: "upload", label: "Upload" },
-  { key: "design", label: "Study design" },
-  { key: "qc", label: "QC" },
-  { key: "rarefy", label: "Rarefaction" },
-  { key: "alpha", label: "Alpha diversity" },
-  { key: "beta", label: "Beta diversity" },
-  { key: "da", label: "Differential abundance" },
-  { key: "refs", label: "References" },
-];
+const BrandMark = () => (
+  <svg viewBox="0 0 26 26" fill="none" aria-hidden="true" width="26" height="26">
+    <rect x=".8" y=".8" width="24.4" height="24.4" rx="7" fill="var(--color-accent)" />
+    <circle cx="8.6" cy="10" r="2" fill="#fff" />
+    <circle cx="17.6" cy="8.4" r="2" fill="#fff" fillOpacity=".82" />
+    <circle cx="16.8" cy="17.6" r="2" fill="#fff" fillOpacity=".66" />
+    <path d="M8.6 10L17.6 8.4M8.6 10l8.2 7.6M17.6 8.4l-.8 9.2" stroke="#fff" strokeOpacity=".6" strokeWidth="1.1" />
+  </svg>
+);
+const LogIcon = () => (
+  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7">
+    <path d="M4 5h12M4 10h12M4 15h8" strokeLinecap="round" />
+  </svg>
+);
+const ThemeIcon = () => (
+  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7">
+    <circle cx="10" cy="10" r="3.6" />
+    <path
+      d="M10 1.6v2M10 16.4v2M1.6 10h2M16.4 10h2M4.1 4.1l1.4 1.4M14.5 14.5l1.4 1.4M15.9 4.1l-1.4 1.4M5.5 14.5l-1.4 1.4"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+const LockIcon = () => (
+  <svg className="lock" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" width="12" height="12">
+    <rect x="4.5" y="8.5" width="11" height="8" rx="2" />
+    <path d="M7 8.5V6.5a3 3 0 0 1 6 0v2" />
+  </svg>
+);
 
-export default function App() {
-  // This one variable is the entire "routing" story for this app — see
-  // the earlier discussion on why a router isn't needed here. Changing
-  // this string is what "navigates," and the tab bar below just reflects
-  // whichever value it currently holds.
-  const [currentPage, setCurrentPage] = useState("upload");
-
-  // Tracks how far the user has actually progressed, so later tabs stay
-  // disabled until earned — same idea as the mock's aria-current/:disabled
-  // tab states.
-  const [furthestUnlocked, setFurthestUnlocked] = useState(0);
-  const currentIndex = PAGES.findIndex((p) => p.key === currentPage);
-
-  function goToPage(key) {
-    const idx = PAGES.findIndex((p) => p.key === key);
-    if (idx > furthestUnlocked) return; // locked — do nothing
-    setCurrentPage(key);
+function useTheme() {
+  const [theme, setTheme] = useState(null); // null = follow system
+  function toggle() {
+    const sysDark = matchMedia("(prefers-color-scheme: dark)").matches;
+    const cur = theme || (sysDark ? "dark" : "light");
+    const next = cur === "dark" ? "light" : "dark";
+    setTheme(next);
+    document.documentElement.setAttribute("data-theme", next);
   }
+  return toggle;
+}
 
-  function advanceFrom(key) {
-    const idx = PAGES.findIndex((p) => p.key === key);
-    setFurthestUnlocked((prev) => Math.max(prev, idx + 1));
-    if (PAGES[idx + 1]) setCurrentPage(PAGES[idx + 1].key);
-  }
+function TabBar() {
+  const { state, actions } = useAppState();
+  const currentIdx = PAGES.findIndex((p) => p.id === state.currentPage);
+  return (
+    <nav className="border-t border-line bg-bg-rail" aria-label="Analysis pages">
+      <div className="max-w-[1480px] mx-auto px-5 flex gap-0.5 overflow-x-auto">
+        {PAGES.map((page, i) => {
+          const isLocked = i > state.unlocked;
+          const isCurrent = page.id === state.currentPage;
+          const isDone = i < currentIdx;
+          return (
+            <button
+              key={page.id}
+              type="button"
+              disabled={isLocked}
+              aria-current={isCurrent ? "page" : undefined}
+              onClick={() => actions.goPage(page.id)}
+              className={`relative flex-none flex items-center gap-2 h-11 px-3.5 text-xs font-semibold whitespace-nowrap border-b-2 transition-colors
+                ${isCurrent ? "text-accent-ink border-accent" : "border-transparent text-ink-2"}
+                ${isLocked ? "text-ink-3 opacity-55 cursor-not-allowed" : "hover:text-ink-0"}`}
+            >
+              <span
+                className={`w-[19px] h-[19px] rounded-full border-[1.4px] flex items-center justify-center text-[10px] font-mono font-bold border-current
+                  ${isDone ? "bg-good border-good text-white" : ""}
+                  ${isCurrent ? "bg-accent border-accent text-white" : ""}`}
+              >
+                {isDone ? "✓" : page.n}
+              </span>
+              {page.label}
+              {isLocked && <LockIcon />}
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
+function AppShell() {
+  const { state } = useAppState();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const toggleTheme = useTheme();
+  const currentPage = PAGES.find((p) => p.id === state.currentPage);
 
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-40 bg-surface/90 backdrop-blur border-b border-line">
-        <div className="max-w-[1480px] mx-auto h-13 flex items-center gap-3 px-5 py-3">
-          <b className="text-sm tracking-tight">Gut Pilot</b>
-          <span className="text-[10.5px] font-mono text-ink-3 border-l border-line-2 pl-2.5 ml-0.5">
-            THE SKEPTICAL REVIEWER
-          </span>
-        </div>
-        <nav className="border-t border-line bg-bg-rail">
-          <div className="max-w-[1480px] mx-auto px-5 flex gap-0.5 overflow-x-auto">
-            {PAGES.map((page, i) => {
-              const isLocked = i > furthestUnlocked;
-              const isCurrent = page.key === currentPage;
-              return (
-                <button
-                  key={page.key}
-                  disabled={isLocked}
-                  onClick={() => goToPage(page.key)}
-                  className={`flex items-center gap-2 h-11 px-3.5 text-xs font-semibold whitespace-nowrap border-b-2 transition-colors
-                    ${isCurrent ? "text-accent-ink border-accent" : "border-transparent text-ink-2"}
-                    ${isLocked ? "text-ink-3 opacity-55 cursor-not-allowed" : "hover:text-ink-0"}`}
-                >
-                  <span
-                    className={`w-[19px] h-[19px] rounded-full border-[1.4px] flex items-center justify-center text-[10px] font-mono font-bold
-                      ${isCurrent ? "bg-accent border-accent text-white" : i < furthestUnlocked ? "bg-good border-good text-white" : ""}`}
-                  >
-                    {i < furthestUnlocked ? "✓" : i + 1}
-                  </span>
-                  {page.label}
-                </button>
-              );
-            })}
+      <Tooltip />
+
+      <header className="sticky top-0 z-50 bg-surface/88 backdrop-blur-md border-b border-line">
+        <div className="max-w-[1480px] mx-auto h-13 flex items-center gap-3.5 px-5 py-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <BrandMark />
+            <b className="text-[14.5px] font-semibold tracking-tight whitespace-nowrap">Gut Pilot</b>
+            <span className="text-[10.5px] font-mono text-ink-3 border-l border-line-2 pl-2.5 ml-0.5 whitespace-nowrap">
+              THE SKEPTICAL REVIEWER
+            </span>
           </div>
-        </nav>
+          <div className="ml-auto flex items-center gap-2">
+            <div className="ds-chip">
+              <i />
+              Baxter CRC 16S <span className="font-mono">· {samples.length} samples</span>
+            </div>
+            <button type="button" className="icon-btn" aria-haspopup="dialog" onClick={() => setDrawerOpen(true)}>
+              <LogIcon />
+              Decision log <span className="badge font-mono">{state.log.length}</span>
+            </button>
+            <button type="button" className="icon-btn" aria-label="Toggle colour theme" title="Toggle light and dark" onClick={toggleTheme}>
+              <ThemeIcon />
+            </button>
+          </div>
+        </div>
+        <TabBar />
       </header>
 
-      <main className="max-w-[1480px] mx-auto px-5 py-7 pb-28">
-        {currentPage === "upload" && (
-          <UploadPage onComplete={() => advanceFrom("upload")} />
+      <div className="max-w-[1480px] mx-auto px-5 py-6.5 pb-30">
+        {state.currentPage === "upload" && <UploadPage />}
+        {state.currentPage !== "upload" && (
+          <div className="text-ink-2 text-sm">Page "{currentPage.label}" — not built yet.</div>
         )}
-        {currentPage !== "upload" && (
-          <div className="text-ink-2 text-sm">
-            Page "{PAGES[currentIndex].label}" — not built yet.
-          </div>
-        )}
-      </main>
+      </div>
+
+      <DecisionLogDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} log={state.log} />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AppStateProvider>
+      <AppShell />
+    </AppStateProvider>
   );
 }
