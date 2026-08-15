@@ -1,5 +1,6 @@
 import { useState } from "react";
 import UploadPage from "./pages/UploadPage";
+import QcPage from "./pages/QcPage";
 import Tooltip from "./components/Tooltip";
 import DecisionLogDrawer from "./components/DecisionLog";
 import FloatingChat from "./components/FloatingChat";
@@ -125,7 +126,8 @@ function AppShell() {
 
       <div className="max-w-[1480px] mx-auto px-5 py-6.5 pb-30">
         {state.currentPage === "upload" && <UploadPage />}
-        {state.currentPage !== "upload" && (
+        {state.currentPage === "qc" && <QcPage />}
+        {state.currentPage !== "upload" && state.currentPage !== "qc" && (
           <div className="text-ink-2 text-sm">Page "{currentPage.label}" — not built yet.</div>
         )}
       </div>

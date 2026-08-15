@@ -190,6 +190,17 @@ svg text {
   color: var(--color-ink-0);
 }
 
+/* Small utility classes used inside app-generated HTML strings (gate notes,
+   floor notes, ...) where Tailwind's `font-mono` isn't reachable because the
+   markup is built as a raw string, not JSX. */
+.mono {
+  font-family: var(--font-mono);
+}
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ============================================================ BUTTONS */
 .btn {
   display: inline-flex;
