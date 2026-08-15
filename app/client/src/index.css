@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+/*
+  Design tokens ported from gut-pilot_mock_260814.html (the north-star mock).
+  This is a flatter, more utilitarian palette than the first mock — no
+  glassmorphism, tighter shadows, a single blue accent.
+*/
+@theme {
+  --color-bg: #f4f6f9;
+  --color-bg-rail: #eceff4;
+  --color-surface: #ffffff;
+  --color-surface-2: #f7f8fb;
+  --color-surface-3: #eef1f6;
+
+  --color-line: rgba(16, 24, 40, 0.10);
+  --color-line-2: rgba(16, 24, 40, 0.17);
+
+  --color-ink-0: #0f1729;
+  --color-ink-1: #39445c;
+  --color-ink-2: #66718c;
+  --color-ink-3: #98a1b6;
+
+  --color-accent: #1f6feb;
+  --color-accent-ink: #14509c;
+  --color-accent-soft: #e7f0fe;
+
+  --color-good: #0f8a4d;
+  --color-good-bg: #e3f6ec;
+  --color-warn: #a86a05;
+  --color-warn-bg: #fbeed4;
+  --color-alert: #b8492a;
+  --color-alert-bg: #fbe6de;
+  --color-crit: #c02f2f;
+  --color-crit-bg: #fbe2e2;
+
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Consolas, monospace;
+
+  --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-2: 0 1px 2px rgba(16, 24, 40, 0.05), 0 8px 24px -12px rgba(16, 24, 40, 0.22);
+}
+
+body {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  color: var(--color-ink-0);
+  background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Reused "gate" note style from the mock — decision explanations */
+.gate-note {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--color-ink-1);
+  border-left: 2px solid var(--color-accent);
+  background: var(--color-surface-2);
+  border-radius: 6px;
+  padding: 10px 13px;
+}
+.gate-note.warn {
+  border-left-color: var(--color-warn);
+  background: var(--color-warn-bg);
+}
