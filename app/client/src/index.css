@@ -668,6 +668,10 @@ input[type="range"]::-moz-range-thumb {
   opacity: 0.4;
   cursor: not-allowed;
 }
+.opt-recommended {
+  outline: 2px solid var(--color-warn);
+  outline-offset: 1px;
+}
 .opt b {
   display: block;
   font-size: 13px;

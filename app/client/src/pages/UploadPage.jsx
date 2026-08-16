@@ -1,21 +1,23 @@
 // UploadPage.jsx — ported from data-page="upload" in gut-pilot_mock_260814.html.
 //
-// This is a demo upload: there's no real backend yet (that's next: Python +
-// FastAPI, with the reviewer's reasoning driven by the Claude SDK). Clicking
-// browse/drop just plays the mock's staged progress animation, then records
-// the first decision-log entry and advances to Study design — same as the
-// mock's runUpload(). The mock's inline "ask the reviewer" box and
-// suggestion chips live in the floating chat widget instead (see
-// components/FloatingChat.jsx) — this page no longer has its own.
+// Real upload: dropping/selecting a .tar.gz (MicrobiomeHD format — same
+// shape as the bundled crc_baxter/cdi_schubert datasets) sends it to the
+// backend, which extracts and parses it for real (compute/ingestion.py) —
+// not a staged animation. No file selected falls back to the bundled
+// crc_baxter dataset instead (see lib/api.js's createSession). The mock's
+// inline "ask the reviewer" box and suggestion chips live in the floating
+// chat widget instead (see components/FloatingChat.jsx) — this page no
+// longer has its own.
 import { useRef, useState } from "react";
 import { useAppState } from "../state/AppStateContext";
 import { createSession } from "../lib/api";
+import { fmt } from "../lib/data";
 
 const SCHEMA_ITEMS = [
-  <>Column 1 is the full taxonomy lineage, for example <span className="font-mono">Bacteria;…;Genus</span></>,
-  <>Columns 2 to N are integer counts, one per sample</>,
+  <>A <span className="font-mono">.tar.gz</span> in MicrobiomeHD format — an <span className="font-mono">RDP/*.rdp_assigned</span> OTU table plus a <span className="font-mono">*.metadata.txt</span> file</>,
+  <>OTU table: taxonomy lineage as the first column, integer counts per sample in the rest</>,
   <>An optional trailing <span className="font-mono">total</span> column is dropped on load</>,
-  <>Optional <span className="font-mono">metadata.tsv</span> with <span className="font-mono">sample_id, group, batch</span></>,
+  <>Metadata sample IDs are reconciled against the count table — mismatches are flagged, never silently merged</>,
 ];
 
 const CheckIcon = () => (
@@ -39,12 +41,14 @@ export default function UploadPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [error, setError] = useState(null);
   const inputRef = useRef(null);
   const timerRef = useRef(null);
 
   function runUpload(file) {
     if (isUploading) return;
     if (file) setFileName(file.name);
+    setError(null);
     setIsUploading(true);
     setProgress(0);
     let p = 0;
@@ -55,20 +59,37 @@ export default function UploadPage() {
         clearInterval(timerRef.current);
         setTimeout(async () => {
           setIsUploading(false);
-          // Cheap call — just loads the backend's fixture dataset, no model
-          // involved. Real per-file ingestion isn't wired up yet.
+          // Real ingestion (compute/ingestion.py), no model call — a real
+          // .tar.gz is genuinely extracted and parsed server-side; no file
+          // falls back to the bundled crc_baxter dataset.
+          let session;
           try {
-            const session = await createSession();
-            actions.setSessionId(session.session_id);
-          } catch {
-            // Backend not running — later pages that need it will just show
-            // their own "reviewer unavailable" state rather than blocking here.
+            session = await createSession(file);
+          } catch (e) {
+            // Parse/validation failure (bad tarball, backend down, etc.) —
+            // don't silently proceed with no data.
+            setError(e.message);
+            return;
           }
+          actions.setSessionId(session.session_id);
+
+          const pr = session.parse_report;
+          if (pr && pr.status === "HARD_STOP") {
+            // Per research/01_ingestion.md: stop and ask on anything that
+            // could change which observations enter the analysis, rather
+            // than silently proceeding with a table that failed validation.
+            setError(`Upload didn't pass validation: ${pr.hard_stops.join("; ")}`);
+            return;
+          }
+
           actions.addLog({
             page: "upload",
             conf: 99,
             src: "schema validator",
-            text: "Loaded genus_count_table.tsv. 24 sample columns and 187 genus rows, delimiter detected as tab. No metadata file supplied.",
+            text: pr
+              ? `Loaded ${file ? file.name : "the crc_baxter dataset"}. ${fmt(pr.n_samples)} sample columns and ${fmt(pr.n_features)} feature rows.` +
+                (pr.metadata.supplied ? ` Metadata joined for ${fmt(pr.metadata.matched_samples)}/${fmt(pr.n_samples)} samples.` : " No metadata file supplied.")
+              : `Loaded ${file ? file.name : "the fixture dataset"}.`,
           });
           actions.advanceTo("design");
         }, 240);
@@ -101,7 +122,7 @@ export default function UploadPage() {
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
-              runUpload();
+              inputRef.current?.click();
             }
           }}
           onDragOver={(e) => {
@@ -117,15 +138,15 @@ export default function UploadPage() {
         >
           <UploadIcon />
           <h3 className="text-[15px] font-medium">
-            Drop <span className="font-mono">genus_count_table.tsv</span> here
+            Drop a <span className="font-mono">.tar.gz</span> here
           </h3>
-          <p className="text-xs text-ink-2">or click to browse. CSV and TSV, delimiter auto-detected.</p>
+          <p className="text-xs text-ink-2">or click to browse. MicrobiomeHD format — same shape as crc_baxter/cdi_schubert.</p>
           <button
             type="button"
             className="btn btn-primary mt-1"
             onClick={(e) => {
               e.stopPropagation();
-              runUpload();
+              inputRef.current?.click();
             }}
           >
             Browse files
@@ -133,6 +154,7 @@ export default function UploadPage() {
           <input
             ref={inputRef}
             type="file"
+            accept=".tar.gz,.tgz,application/gzip"
             className="hidden"
             onChange={(e) => handleFile(e.target.files[0])}
           />
@@ -167,7 +189,16 @@ export default function UploadPage() {
         </div>
       </div>
 
-      {fileName && !isUploading && <div className="text-xs font-mono text-ink-2">Selected: {fileName}</div>}
+      {fileName && !isUploading && !error && <div className="text-xs font-mono text-ink-2">Selected: {fileName}</div>}
+
+      {error && (
+        <div className="gate-note warn flex items-center gap-2.5">
+          <span>{error}</span>
+          <button type="button" className="btn btn-sm" onClick={() => { setError(null); setFileName(null); }}>
+            Try a different file
+          </button>
+        </div>
+      )}
 
       <div className="block">
         <div className="block-body pad-t flex items-center justify-between gap-4">

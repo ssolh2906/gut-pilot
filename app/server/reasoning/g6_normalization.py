@@ -8,20 +8,11 @@ in progress") - this runs in Prompt mode, per the gate's evidence policy.
 """
 
 import json
-import re
 
-import anthropic
-
-from .knowledge_base import load_research_notes
 from .paperclip_tool import paperclip_lookup_doi, paperclip_read_excerpt, paperclip_search
+from .shared import DEFAULT_MODEL, build_system_prompt, run_gate_reasoning, verify_quote
 
-# Haiku while iterating on this gate — cheap and fast enough to develop
-# against. Swap to a stronger model (e.g. claude-opus-5) before relying on
-# the reasoning quality for real use; Haiku's citation grounding especially
-# should be re-verified the same way the Opus run was, since a smaller
-# model may follow the paperclip_lookup_doi -> paperclip_read_excerpt ->
-# quote instruction less reliably.
-MODEL = "claude-haiku-4-5"
+MODEL = DEFAULT_MODEL
 
 # Canonical citations for the three-way debate. Re-resolved live via
 # Paperclip on every request (per the runtime citation policy in
@@ -88,46 +79,24 @@ When you are done researching, respond with ONLY a fenced ```json block \
 explaining the recommended strategy using the ACTUAL retention numbers you were given>",
   "positions": [
     {"side": "for", "claim": "<the for-rarefaction claim, grounded in what you read>", \
-"ref_key": "schloss2024", "quote": "<verbatim text from an L<n>: line you actually read \
+"ref_key": "schloss2024", "paper_id": "<the corpus document ID paperclip_lookup_doi \
+returned, e.g. 'PMC10900887', or null if quote is null>", \
+"quote": "<verbatim text from an L<n>: line you actually read \
 via paperclip_read_excerpt, or null if you could not obtain one>", \
 "line_ref": "<e.g. 'L45' or 'L45-L52', matching the quote, or null if quote is null>"},
     {"side": "against", "claim": "<the against-rarefaction claim>", "ref_key": "mcmurdie2014", \
-"quote": "<...or null>", "line_ref": "<...or null>"},
+"paper_id": "<...or null>", "quote": "<...or null>", "line_ref": "<...or null>"},
     {"side": "third", "claim": "<the compositional-data claim>", "ref_key": "gloor2017", \
-"quote": "<...or null>", "line_ref": "<...or null>"}
+"paper_id": "<...or null>", "quote": "<...or null>", "line_ref": "<...or null>"}
   ]
 }
 If you were genuinely unable to get a real excerpt for one of the three \
 positions (tool failure, paper truly unavailable), set that position's \
-"quote" and "line_ref" to null rather than fabricating either one - an \
-honest gap is fine, a fabricated citation is not.
+"paper_id", "quote", and "line_ref" to null rather than fabricating any of \
+them - an honest gap is fine, a fabricated or misattributed citation is not. \
+Every quote/line_ref you report is independently re-verified against the \
+real paper before anyone sees it, so there is no advantage to guessing.
 """
-
-
-def _build_system_prompt():
-    """Append the team's own written grounding material for G6 from
-    research/*.md to the base system prompt, read fresh on every call -
-    not cached - so an edit takes effect on the next request with no
-    server restart.
-
-    research/ has no step file covering G6 yet (it only goes through Step
-    3, raw QC), so this is currently a no-op - Claude reasons from the
-    base prompt alone until a normalization step doc is written and
-    tagged `gate_ids: [G6, ...]`.
-    """
-    parts = [_SYSTEM_PROMPT_BASE]
-
-    for note in load_research_notes("G6"):
-        parts.append(
-            "\n\nHere is one of your team's own pipeline-step 'Agent "
-            "instructions' documents (from research/) that covers this "
-            "gate - it is the authoritative source for this gate's "
-            "contract and reasoning guidance. Read it, and where it's "
-            "more specific or differs from anything above, defer to it."
-            "\n\n---\n" + note + "\n---\n"
-        )
-
-    return "".join(parts)
 
 
 def _retention_preview(count_table, threshold):
@@ -140,33 +109,19 @@ def _retention_preview(count_table, threshold):
     }
 
 
-def _extract_json_block(text):
-    match = re.search(r"```json\s*(\{.*?\})\s*```", text, re.DOTALL)
-    if not match:
-        raise ValueError("reviewer did not return a fenced json block: " + text[:500])
-    return json.loads(match.group(1))
-
-
 def _run_reasoning(retention_by_strategy):
-    client = anthropic.Anthropic()
+    system_prompt = build_system_prompt(_SYSTEM_PROMPT_BASE, "G6")
     user_prompt = (
         "Current retention under each strategy, computed by the Compute layer "
         f"(do not change these numbers): {json.dumps(retention_by_strategy)}\n\n"
         f"DOIs to verify: {json.dumps(_CITATIONS)}"
     )
-    runner = client.beta.messages.tool_runner(
+    return run_gate_reasoning(
+        system_prompt,
+        user_prompt,
         model=MODEL,
-        max_tokens=4000,
-        system=_build_system_prompt(),
         tools=[paperclip_lookup_doi, paperclip_read_excerpt, paperclip_search],
-        messages=[{"role": "user", "content": user_prompt}],
     )
-    final_text = ""
-    for message in runner:
-        for block in message.content:
-            if block.type == "text":
-                final_text = block.text
-    return _extract_json_block(final_text)
 
 
 def build_g6_response(session):
@@ -197,12 +152,20 @@ def build_g6_response(session):
             "requires": ["zero_replacement_rule"],
         },
     ]
-    positions = [{**p, "doi": _CITATIONS[p["ref_key"]]} for p in reasoning["positions"]]
+    positions = []
+    for p in reasoning["positions"]:
+        quote, line_ref = p.get("quote"), p.get("line_ref")
+        if quote and not verify_quote(p.get("paper_id"), quote, line_ref):
+            quote, line_ref = None, None
+        positions.append({
+            "side": p["side"], "claim": p["claim"], "ref_key": p["ref_key"],
+            "doi": _CITATIONS[p["ref_key"]], "quote": quote, "line_ref": line_ref,
+        })
 
     return {
         "gate_id": "G6",
         "strategy": session.norm_strategy,
-        "recommendation": {"strategy": "rarefy", "label": "RECOMMENDS RAREFACTION"},
+        "recommendation": {"option_id": "rarefy", "label": "RECOMMENDS RAREFACTION"},
         "options": options,
         "note": {"severity": "info", "message": reasoning["note_message"]},
         "positions": positions,

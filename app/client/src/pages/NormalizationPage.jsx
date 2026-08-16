@@ -252,7 +252,13 @@ export default function NormalizationPage() {
             <div className="block-body flex flex-col gap-3">
               <OptRow>
                 {gate.options.map((opt) => (
-                  <Opt key={opt.option_id} pressed={selected === opt.option_id} onClick={() => setSelected(opt.option_id)} title={opt.label}>
+                  <Opt
+                    key={opt.option_id}
+                    pressed={selected === opt.option_id}
+                    recommended={opt.option_id === gate.recommendation.option_id}
+                    onClick={() => setSelected(opt.option_id)}
+                    title={opt.label}
+                  >
                     {opt.summary}{" "}
                     <span className="font-mono">
                       ({opt.retention_preview.retained}/{opt.retention_preview.total} retained)

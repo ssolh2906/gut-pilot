@@ -4,11 +4,14 @@
 // above it. Replaces the mock's per-page "ask" boxes and embedded AI docks
 // with one conversation.
 //
-// There's no backend yet — sending a message shows a stub reply rather
-// than a fake domain-specific answer. Once the FastAPI + Claude SDK
-// backend exists (with the Paperclip skill for literature lookups), the
-// stub in `getReply` is the one place that needs to change.
+// Every send is a real, billed Claude call (reasoning/chatbot.py on the
+// backend, grounded in this session's decision log + gate state + whichever
+// research/*.md doc covers the current page) — only fires from an explicit
+// send action, never automatically, same cost-conscious pattern as the
+// per-gate Reveal buttons.
 import { useEffect, useRef, useState } from "react";
+import { useAppState } from "../state/AppStateContext";
+import { sendChatMessage } from "../lib/api";
 
 const QUICK_PROMPTS = [
   "Flag low-depth samples",
@@ -35,11 +38,8 @@ const SendIcon = () => (
 
 let nextId = 1;
 
-function getReply() {
-  return "I'm not connected to a live backend yet — once the reviewer is wired up (FastAPI + the Claude SDK, using Paperclip for literature lookups), I'll answer from this run's actual data instead of this placeholder.";
-}
-
 export default function FloatingChat() {
+  const { state } = useAppState();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [typing, setTyping] = useState(false);
@@ -58,17 +58,30 @@ export default function FloatingChat() {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  function send(text) {
+  async function send(text) {
     const t = text.trim();
     if (!t || typing) return;
-    setMessages((m) => [...m, { id: nextId++, role: "me", text: t }]);
     setValue("");
+
+    if (!state.sessionId) {
+      setMessages((m) => [
+        ...m,
+        { id: nextId++, role: "me", text: t },
+        { id: nextId++, role: "ai", text: "No active run yet — start one from Upload first, then I can answer using its real data." },
+      ]);
+      return;
+    }
+
+    setMessages((m) => [...m, { id: nextId++, role: "me", text: t }]);
     setTyping(true);
-    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    setTimeout(() => {
+    try {
+      const { reply } = await sendChatMessage(state.sessionId, t, state.currentPage);
+      setMessages((m) => [...m, { id: nextId++, role: "ai", text: reply }]);
+    } catch (e) {
+      setMessages((m) => [...m, { id: nextId++, role: "ai", text: `Something went wrong reaching the reviewer: ${e.message}` }]);
+    } finally {
       setTyping(false);
-      setMessages((m) => [...m, { id: nextId++, role: "ai", text: getReply() }]);
-    }, reduce ? 80 : 700);
+    }
   }
 
   return (
@@ -85,8 +98,7 @@ export default function FloatingChat() {
           {messages.length === 0 ? (
             <>
               <p className="chat-empty">
-                Ask about the data, a decision the reviewer made, or what to check next. This is a placeholder for now —
-                real answers come once the backend is connected.
+                Ask about the data, a decision the reviewer made, or what to check next — grounded in this run's actual state.
               </p>
               <div className="chips dock-chips">
                 {QUICK_PROMPTS.map((p) => (
