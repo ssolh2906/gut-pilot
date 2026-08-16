@@ -13,11 +13,13 @@
 // Bray-Curtis or Jaccard afterwards, which is exactly the state R2 warns
 // about. Aitchison itself is disabled unless G6=CLR, and UniFrac is always
 // disabled (no phylogenetic tree), per docs/gates/G9.md.
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppState } from "../state/AppStateContext";
 import { useAutoProceed } from "../hooks/useAutoProceed";
+import { getBetaMetric } from "../lib/api";
 import { retained } from "../state/selectors";
-import { OptRow, Opt, GateNote } from "../components/Gate";
+import { OptRow, Opt, GateNote, ConfBadge } from "../components/Gate";
+import Spinner from "../components/Spinner";
 import ChartTools from "../components/ChartTools";
 import PageContextStrip from "../components/PageContextStrip";
 import { scaleLinear, divergeColor, sequentialColor } from "../components/charts/chartHelpers";
@@ -187,9 +189,43 @@ function PermanovaStrip({ singleCohort, metric, alphaLevel }) {
 
 export default function BetaPage() {
   const { state, actions } = useAppState();
+  const g9 = state.g9Gate;
   const kept = retained(state);
   const pcoaRef = useRef(null);
   const heatRef = useRef(null);
+
+  // ---- G9 (distance metric) — its own live Claude + Paperclip call,
+  // grounded in research/06_beta_diversity_contextualized.md. Runs
+  // automatically once a session exists (see the effect below), same
+  // auto-fire pattern as Alpha/Design/Normalize — only the eventual choice
+  // waits on the human, not the AI's read of the run.
+  const [g9Loading, setG9Loading] = useState(false);
+  const [g9Error, setG9Error] = useState(null);
+
+  async function fetchG9() {
+    if (!state.sessionId) {
+      setG9Error("No active session yet — go back to Upload first so the backend has a dataset loaded.");
+      return;
+    }
+    setG9Loading(true);
+    setG9Error(null);
+    try {
+      const data = await getBetaMetric(state.sessionId);
+      actions.setG9Gate(data);
+    } catch (e) {
+      setG9Error(e.message);
+    } finally {
+      setG9Loading(false);
+    }
+  }
+
+  const g9FetchedRef = useRef(false);
+  useEffect(() => {
+    if (g9FetchedRef.current || g9 || !state.sessionId) return;
+    g9FetchedRef.current = true;
+    fetchG9();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.sessionId]);
 
   function setBetaMetric(value) {
     actions.setBetaMetric(value);
@@ -216,16 +252,50 @@ export default function BetaPage() {
             <h2>Distance metric</h2>
             <p className="sub">Each metric asks a different question of the same table, so this is a scientific choice rather than a default.</p>
           </div>
+          {g9 && <ConfBadge>{g9.recommendation.label}</ConfBadge>}
         </div>
         <div className="block-body">
+          {(g9Loading || (!g9 && !g9Error)) && (
+            <p className="text-sm text-ink-2 flex items-center gap-2.5">
+              <Spinner />
+              Reviewer is checking the normalization pathway, sparsity, and group structure to ground the distance-metric default for this run — this takes a little while.
+            </p>
+          )}
+
+          {g9Error && (
+            <div className="gate-note warn flex items-center gap-2.5">
+              <span>{g9Error}</span>
+              <button type="button" className="btn btn-sm" onClick={fetchG9}>
+                Retry
+              </button>
+            </div>
+          )}
+
+          {g9 && (
+            <GateNote
+              html={
+                g9.note.message +
+                (g9.citation?.quote
+                  ? ` <span class="mono">(${g9.citation.ref_key}, ${g9.citation.line_ref})</span>: "${g9.citation.quote}"`
+                  : "")
+              }
+            />
+          )}
+
           <OptRow>
-            <Opt pressed={state.betaMetric === "bray"} onClick={() => setBetaMetric("bray")} title="Bray-Curtis">
+            <Opt pressed={state.betaMetric === "bray"} recommended={g9?.recommendation.option_id === "bray"} onClick={() => setBetaMetric("bray")} title="Bray-Curtis">
               Abundance weighted. Common taxa dominate the result.
             </Opt>
             <Opt pressed={state.betaMetric === "jaccard"} onClick={() => setBetaMetric("jaccard")} title="Jaccard">
               Presence and absence only. Rare taxa weigh far more.
             </Opt>
-            <Opt pressed={state.betaMetric === "aitchison"} disabled={state.normStrategy !== "clr"} onClick={() => setBetaMetric("aitchison")} title="Aitchison">
+            <Opt
+              pressed={state.betaMetric === "aitchison"}
+              recommended={g9?.recommendation.option_id === "aitchison"}
+              disabled={state.normStrategy !== "clr"}
+              onClick={() => setBetaMetric("aitchison")}
+              title="Aitchison"
+            >
               {state.normStrategy === "clr" ? "Log-ratio geometry. Required pairing for a CLR transform." : "Requires the CLR transform at the normalization gate."}
             </Opt>
             <Opt disabled title="UniFrac">

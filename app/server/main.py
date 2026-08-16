@@ -31,6 +31,8 @@ from compute.p07_artifact_checks import check_normalization_metric_mismatch
 from reasoning.chatbot import chat_session
 from reasoning.g4_taxonomic_rank import apply_g4_rank, build_g4_response
 from reasoning.g6_normalization import apply_g6_strategy, build_g6_response
+from reasoning.g8_alpha_diversity import build_g8_response
+from reasoning.g9_beta_diversity import build_g9_response
 from reasoning.study_design import build_study_design_response
 from session_store import create_session, get_session
 
@@ -162,6 +164,18 @@ def set_design_rank(sid: str, body: RankBody):
         return apply_g4_rank(session, body.rank)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/session/{sid}/alpha/significance")
+def get_alpha_significance(sid: str):
+    session = _require_session(sid)
+    return build_g8_response(session)
+
+
+@app.get("/api/session/{sid}/beta/metric")
+def get_beta_metric(sid: str):
+    session = _require_session(sid)
+    return build_g9_response(session)
 
 
 class ChatBody(BaseModel):
