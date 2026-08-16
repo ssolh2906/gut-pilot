@@ -12,6 +12,10 @@ import re
 
 import anthropic
 
+from compute.p04_normalization import clr_transform, css_scale
+from compute.p04_rarefaction import samples_above_depth
+from compute.p07_artifact_checks import check_normalization_metric_mismatch
+
 from .knowledge_base import load_research_notes
 from .paperclip_tool import paperclip_lookup_doi, paperclip_read_excerpt, paperclip_search
 
@@ -131,12 +135,12 @@ def _build_system_prompt():
 
 
 def _retention_preview(count_table, threshold):
-    depths = count_table.sum(axis=0)
-    excluded = [s for s in count_table.columns if depths[s] < threshold]
+    depths = count_table.sum(axis=0).to_dict()
+    split = samples_above_depth(depths, threshold)
     return {
-        "retained": len(count_table.columns) - len(excluded),
-        "total": len(count_table.columns),
-        "excluded": excluded,
+        "retained": len(split["retained"]),
+        "total": len(depths),
+        "excluded": split["excluded"],
     }
 
 
@@ -221,7 +225,7 @@ def apply_g6_strategy(session, strategy):
             "message": f"All {session.count_table.shape[1]} samples are retained and the depth "
                        "threshold no longer applies.",
         })
-    if strategy == "clr" and session.beta_metric != "aitchison":
+    if check_normalization_metric_mismatch(strategy, session.beta_metric):
         cascades.append({
             "rule": "R2", "target_gate": "G9", "action": "force",
             "from": session.beta_metric, "to": "aitchison",
@@ -233,6 +237,12 @@ def apply_g6_strategy(session, strategy):
         session.beta_metric = "bray"
 
     session.norm_strategy = strategy
+    if strategy == "css":
+        session.normalized_table = css_scale(session.count_table)
+    elif strategy == "clr":
+        session.normalized_table = clr_transform(session.count_table)
+    else:
+        session.normalized_table = None
     session.log.append({
         "gate_id": "g6", "actor": "human",
         "decision": f"Normalization strategy set to {strategy}.",
