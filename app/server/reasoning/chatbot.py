@@ -169,6 +169,28 @@ def _client_state_block(client_state: dict | None) -> str:
         lines.append(f"- Significance level currently selected (G8): {client_state['alphaLevel']}")
     if client_state.get("correction"):
         lines.append(f"- Multiple-testing correction currently selected (G8): {client_state['correction']}")
+
+    # The Summary page's synthesis (hero finding, narrative, limitations,
+    # next steps) is generated once client-side and never written back to
+    # `session` at all - without this, the chatbot has zero access to it,
+    # even while the user is looking straight at it.
+    summary = client_state.get("summary")
+    if summary:
+        lines.append("")
+        lines.append("The Summary page has already been generated and is what the user is looking at right now. Its exact content, verbatim:")
+        if summary.get("heroFinding"):
+            lines.append(f'- Headline finding: "{summary["heroFinding"]}"')
+        if summary.get("summaryText"):
+            lines.append(f'- Summary paragraph: "{summary["summaryText"]}"')
+        if summary.get("literatureValidationText"):
+            lines.append(f'- Literature validation: "{summary["literatureValidationText"]}"')
+        if summary.get("limitations"):
+            items = "; ".join(f'{item.get("title")} — {item.get("body")}' for item in summary["limitations"])
+            lines.append(f"- Statistical Considerations (limitations): {items}")
+        if summary.get("nextSteps"):
+            items = "; ".join(f'{item.get("title")} — {item.get("hypothesis")}' for item in summary["nextSteps"])
+            lines.append(f"- Proposed next steps: {items}")
+
     return "\n".join(lines) if len(lines) > 1 else ""
 
 

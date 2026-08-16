@@ -59,6 +59,19 @@ function buildClientState(state) {
     betaMetric: state.betaMetric,
     alphaLevel: state.alphaLevel,
     correction: state.correction,
+    // The Summary page's synthesis is generated once client-side (see
+    // RefsPage.jsx) and never written back to the backend session at all —
+    // without this, the chatbot has no way to see it, even while it's the
+    // exact thing on the user's screen.
+    summary: state.synthesisGate
+      ? {
+          heroFinding: state.synthesisGate.hero_finding,
+          summaryText: state.synthesisGate.summary_text,
+          literatureValidationText: state.synthesisGate.literature_validation_text,
+          limitations: state.synthesisGate.limitations,
+          nextSteps: state.synthesisGate.next_steps,
+        }
+      : null,
   };
 }
 
