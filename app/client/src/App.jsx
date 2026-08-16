@@ -10,6 +10,7 @@ import RefsPage from "./pages/RefsPage";
 import Tooltip from "./components/Tooltip";
 import DecisionLogDrawer, { DecisionLogRail } from "./components/DecisionLog";
 import FloatingChat from "./components/FloatingChat";
+import AppErrorBoundary from "./components/AppErrorBoundary";
 import { AppStateProvider, useAppState } from "./state/AppStateContext";
 import { PAGES } from "./lib/pages";
 
@@ -142,8 +143,10 @@ function AppShell() {
 
 export default function App() {
   return (
-    <AppStateProvider>
-      <AppShell />
-    </AppStateProvider>
+    <AppErrorBoundary>
+      <AppStateProvider>
+        <AppShell />
+      </AppStateProvider>
+    </AppErrorBoundary>
   );
 }

@@ -16,16 +16,13 @@
 // The rarefaction curve chart, depth slider, and "Reviewer proposal" note
 // below cover G7 (rarefaction depth) — client-side only for now, no G7
 // backend yet — shown once "Rarefaction" is the selected strategy.
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAppState } from "../state/AppStateContext";
 import { useAutoProceed } from "../hooks/useAutoProceed";
-import { getNormalizeStrategy, setNormalizeStrategy } from "../lib/api";
-import { retained } from "../state/selectors";
+import { getNormalizeStrategy, setNormalizeStrategy, setRarefactionDepth, getQcDepth } from "../lib/api";
 import Reveal from "../components/Reveal";
 import { Opt, OptRow, GateNote, ConfBadge } from "../components/Gate";
-import ChartTools from "../components/ChartTools";
-import { scaleLinear, tickFractions } from "../components/charts/chartHelpers";
-import { samples, richnessAt, THRESH_DEFAULT, fmt, groupName, groupColor, refLink, refShort } from "../lib/data";
+import { fmt, refLink, refShort } from "../lib/data";
 
 const STRATEGY_LABEL = { rarefy: "Rarefaction", css: "CSS scaling", clr: "CLR transform" };
 const SIDE_LABEL = { for: "For rarefaction", against: "Against rarefaction", third: "Third position" };
@@ -37,88 +34,19 @@ const SparkleIcon = () => (
   </svg>
 );
 
-const W = 900,
-  H = 320,
-  L = 58,
-  R = 18,
-  T = 16,
-  B = 40;
-
-function RareChart({ svgRef, threshold }) {
-  const pw = W - L - R;
-  const ph = H - T - B;
-  const maxD = Math.max(...samples.map((s) => s.depth));
-  const maxR = Math.max(...samples.map((s) => s.rMax)) * 1.05;
-  const x = scaleLinear(0, maxD, L, L + pw);
-  const y = scaleLinear(0, maxR, T + ph, T);
-  const steps = 28;
-
-  return (
-    <div className="plot wide">
-      <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Rarefaction curves">
-        {tickFractions(4).map((f) => {
-          const yy = T + ph - f * ph;
-          const xx = L + f * pw;
-          return (
-            <g key={f}>
-              <line x1={L} x2={W - R} y1={yy} y2={yy} className="gl" />
-              <text x={L - 8} y={yy + 3.5} textAnchor="end" fontSize="10">
-                {Math.round(maxR * f)}
-              </text>
-              <text x={xx} y={H - B + 16} textAnchor="middle" fontSize="10">
-                {fmt(Math.round(maxD * f))}
-              </text>
-            </g>
-          );
-        })}
-
-        {samples.map((s) => {
-          let d = "";
-          for (let i = 0; i <= steps; i++) {
-            const dd = (s.depth * i) / steps;
-            d += (i ? "L" : "M") + x(dd).toFixed(1) + " " + y(richnessAt(s, dd)).toFixed(1) + " ";
-          }
-          const out = s.depth < threshold;
-          return (
-            <path
-              key={s.id}
-              d={d}
-              className={"curve" + (out ? " out" : "")}
-              stroke={groupColor(s.group)}
-              data-tip={`${s.id}|group=${groupName(s.group)}|max depth=${fmt(s.depth)} reads|plateau richness=${s.rMax.toFixed(0)}|richness at ${fmt(threshold)}=${richnessAt(s, Math.min(threshold, s.depth)).toFixed(1)}${out ? "|!Excluded at the current threshold" : ""}`}
-            />
-          );
-        })}
-
-        <line x1={x(threshold)} x2={x(threshold)} y1={T} y2={H - B} stroke="var(--color-ink-0)" strokeWidth="1.4" strokeDasharray="5 3" />
-        <text x={x(threshold) + 6} y={T + 12} fontSize="10" fill="var(--color-ink-1)" fontWeight="700">
-          {fmt(threshold)}
-        </text>
-
-        <line x1={L} x2={L} y1={T} y2={H - B} className="ax" />
-        <line x1={L} x2={W - R} y1={H - B} y2={H - B} className="ax" />
-        <text x={W - R} y={H - 8} textAnchor="end" fontSize="10">
-          reads sampled →
-        </text>
-        <text x="16" y={T + ph / 2} textAnchor="middle" fontSize="10" transform={`rotate(-90 16 ${T + ph / 2})`}>
-          observed genera
-        </text>
-      </svg>
-    </div>
-  );
-}
-
 export default function NormalizationPage() {
   const { state, actions } = useAppState();
   const gate = state.g6Gate;
   const { threshold } = state;
-  const svgRef = useRef(null);
+  const [depthData, setDepthData] = useState(null);
+  const [recommendedDepth] = useState(threshold);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState(gate?.strategy ?? null);
   const [confirming, setConfirming] = useState(false);
   const [cascades, setCascades] = useState(null);
+  const [autoFetchStarted, setAutoFetchStarted] = useState(false);
   // Tracks whether "Confirm strategy" has actually succeeded at least once
   // for the *currently selected* strategy. Kept separate from
   // hasPendingChange below: right after fetchGate, selected already equals
@@ -129,7 +57,21 @@ export default function NormalizationPage() {
   const [confirmedOnce, setConfirmedOnce] = useState(false);
 
   const rare = selected === "rarefy";
-  const kept = retained(state);
+  useEffect(() => {
+    if (!state.sessionId) return;
+    let active = true;
+    getQcDepth(state.sessionId).then((data) => { if (active) setDepthData(data); }).catch(() => {});
+    return () => { active = false; };
+  }, [state.sessionId]);
+
+  const comparisonSamples = useMemo(
+    () => (depthData?.bars ?? []).filter((sample) => sample.group === "H" || sample.group === "CRC"),
+    [depthData],
+  );
+  const retainedSamples = useMemo(
+    () => comparisonSamples.filter((sample) => sample.depth >= threshold),
+    [comparisonSamples, threshold],
+  );
 
   async function fetchGate() {
     if (!state.sessionId) {
@@ -185,19 +127,36 @@ export default function NormalizationPage() {
   const hasPendingChange = gate && selected !== gate.strategy;
   const canProceed = !!gate && confirmedOnce && !hasPendingChange;
 
-  function approve() {
+  useEffect(() => {
+    if (state.autoProceed && state.sessionId && !gate && !autoFetchStarted) {
+      setAutoFetchStarted(true);
+      fetchGate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.autoProceed, state.sessionId, gate, autoFetchStarted]);
+
+  async function approve() {
+    if (rare && state.sessionId) {
+      try {
+        await setRarefactionDepth(state.sessionId, threshold);
+      } catch (e) {
+        setError(`Could not apply the depth: ${e.message}`);
+        return;
+      }
+    }
     actions.addLog({
       key: "rarefyApprove",
       page: "rarefy",
       human: true,
       src: "human-in-the-loop",
       text: rare
-        ? `Depth approved at ${fmt(threshold)} reads per sample. ${kept.length} samples retained, ${samples.length - kept.length} excluded.`
-        : `${STRATEGY_LABEL[gate.strategy]} approved. All ${samples.length} samples retained.`,
+        ? `Depth approved at ${fmt(threshold)} reads per sample. ${retainedSamples.length}/${comparisonSamples.length} H/CRC samples retained.`
+        : `${STRATEGY_LABEL[gate.strategy]} approved. All comparison samples retained.`,
     });
     actions.advanceTo("alpha");
   }
 
+  useAutoProceed(!!gate && !confirmedOnce && !confirming, confirmStrategy);
   useAutoProceed(canProceed, approve);
 
   return (
@@ -214,7 +173,7 @@ export default function NormalizationPage() {
       {!gate && !loading && (
         <Reveal
           title="Ask the reviewer for a recommendation"
-          subtitle="A live call to Claude, grounded in citations it verifies via Paperclip — takes 30–60 seconds"
+          subtitle="An evidence-grounded reviewer call with citation verification when the live provider is available"
           stepLabel="step 1 of 1"
           onReveal={fetchGate}
         />
@@ -303,7 +262,7 @@ export default function NormalizationPage() {
                     ? `Selecting ${STRATEGY_LABEL[selected]} — confirm to record the decision and check for effects on later gates.`
                     : "This strategy is confirmed and logged."}
                 </p>
-                <button type="button" className="btn btn-primary btn-sm" disabled={confirming || !hasPendingChange} onClick={confirmStrategy}>
+                <button type="button" className="btn btn-primary btn-sm" disabled={confirming || (confirmedOnce && !hasPendingChange)} onClick={confirmStrategy}>
                   {confirming ? "Confirming…" : "Confirm strategy"}
                 </button>
               </div>
@@ -318,10 +277,7 @@ export default function NormalizationPage() {
               <div>
                 <h4>Reviewer proposal</h4>
                 <p>
-                  I picked <span className="mono font-semibold">{fmt(THRESH_DEFAULT)} reads per sample</span> because rarefaction curves plateau for 22 of 24 samples by that depth, and Schloss (2024)
-                  found that rarefaction, meaning repeated subsampling rather than single-pass rarefying, gives the highest statistical power for alpha and beta diversity when depth is uneven across
-                  groups. Two samples (<span className="mono">H-09</span>, <span className="mono">C-04</span>) stay below the line and are excluded, rather than forcing the whole cohort down to their
-                  depth.
+                  The data-derived proposal is <span className="mono font-semibold">{fmt(recommendedDepth)} reads per sample</span>. It is the highest 100-read threshold that retains at least 85% of both H and CRC while keeping the retention-rate gap within 15 percentage points. Diversity uses repeated subsampling at this depth; differential abundance restarts from filtered relative abundances instead of reusing a rarefied matrix.
                 </p>
                 <div className="meta">
                   <a className="cite" href={refLink("schloss2024")} target="_blank" rel="noopener noreferrer">
@@ -336,70 +292,19 @@ export default function NormalizationPage() {
           )}
 
           {rare && (
-            <div className="rare-grid">
-              <div className="block">
-                <div className="block-head">
-                  <div>
-                    <h2>Rarefaction curves</h2>
-                    <p className="sub">Vertical line is the current threshold. Dimmed curves are excluded at that depth. Hover a curve for its plateau.</p>
-                  </div>
-                  <ChartTools svgRef={svgRef} name="rarefaction-curves" getCsvRows={() => [["sample", "group", "depth", "retained"], ...samples.map((s) => [s.id, groupName(s.group), s.depth, s.depth >= threshold ? "yes" : "no"])]} />
+            <div className="block">
+              <div className="block-head"><div><h2>Real cohort retention</h2><p className="sub">The slider is evaluated against all uploaded H and CRC sample depths.</p></div></div>
+              <div className="block-body">
+                <div className="slider-read"><span className="v">{fmt(threshold)}</span><span className="u">reads / sample</span></div>
+                <input type="range" min={500} max={10000} step={100} value={threshold} aria-label="Rarefaction depth" onChange={(event) => actions.setThreshold(+event.target.value)} />
+                <div className="scale"><span>500</span><span>10,000</span></div>
+                <div className="pv-strip mt-4">
+                  <div className="pv"><span className="l">Retained total</span><span className="v">{retainedSamples.length}/{comparisonSamples.length || "…"}</span></div>
+                  <div className="pv"><span className="l">Healthy</span><span className="v">{retainedSamples.filter((sample) => sample.group === "H").length}/{comparisonSamples.filter((sample) => sample.group === "H").length || "…"}</span></div>
+                  <div className="pv"><span className="l">CRC</span><span className="v">{retainedSamples.filter((sample) => sample.group === "CRC").length}/{comparisonSamples.filter((sample) => sample.group === "CRC").length || "…"}</span></div>
+                  <div className="pv"><span className="l">Excluded</span><span className="v">{comparisonSamples.length ? comparisonSamples.length - retainedSamples.length : "…"}</span></div>
                 </div>
-                <div className="block-body">
-                  <RareChart svgRef={svgRef} threshold={threshold} />
-                  <div className="legend">
-                    <div className="lg line">
-                      <i style={{ background: "var(--color-cat-1)" }} />
-                      Healthy
-                    </div>
-                    <div className="lg line">
-                      <i style={{ background: "var(--color-cat-8)" }} />
-                      CRC
-                    </div>
-                    <div className="lg line">
-                      <i style={{ background: "var(--color-ink-3)" }} />
-                      Excluded at current depth
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="block">
-                <div className="block-head">
-                  <div>
-                    <h3>Threshold</h3>
-                  </div>
-                </div>
-                <div className="block-body">
-                  <div className="slider-read">
-                    <span className="v">{fmt(threshold)}</span>
-                    <span className="u">reads / sample</span>
-                  </div>
-                  <input type="range" min={500} max={10000} step={50} value={threshold} aria-label="Rarefaction depth" onChange={(e) => actions.setThreshold(+e.target.value)} />
-                  <div className="scale">
-                    <span>500</span>
-                    <span>10,000</span>
-                  </div>
-                  <div className="retain">
-                    <b>{kept.length} of {samples.length}</b> samples retained
-                    <br />
-                    Healthy {kept.filter((s) => s.group === "H").length} against CRC {kept.length - kept.filter((s) => s.group === "H").length}
-                  </div>
-                  <div className="sids">
-                    {samples.map((s) => {
-                      const out = s.depth < threshold;
-                      return (
-                        <div key={s.id} className={"sid" + (out ? " out" : "")} data-tip={`${s.id}|group=${groupName(s.group)}|reads=${fmt(s.depth)}${out ? "|!Excluded" : ""}`}>
-                          <i style={{ background: groupColor(s.group) }} />
-                          {s.id}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <button type="button" className="btn btn-sm mt-3 w-full" onClick={() => actions.setThreshold(THRESH_DEFAULT)}>
-                    Reset to proposal ({fmt(THRESH_DEFAULT)})
-                  </button>
-                </div>
+                <button type="button" className="btn btn-sm mt-3" onClick={() => actions.setThreshold(recommendedDepth)}>Reset to data-derived proposal ({fmt(recommendedDepth)})</button>
               </div>
             </div>
           )}

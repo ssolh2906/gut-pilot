@@ -30,14 +30,32 @@ export function Opt({ pressed, recommended, disabled, onClick, title, children }
   );
 }
 
-// `html` is a pre-built string (may contain <b>, <span class="mono">, ...)
-// because the reviewer's explanations are generated with inline emphasis —
-// same approach the mock used. Content is always app-generated, never
-// user-supplied, so this is safe.
+export function sanitizeReviewerHtml(value) {
+  if (typeof value !== "string") return "";
+  const tags = [];
+  const tokenized = value.replace(/<\/?b>|<span class=(['"])mono\1>|<\/span>/gi, (tag) => {
+    let safeTag;
+    if (/^<b>$/i.test(tag)) safeTag = "<b>";
+    else if (/^<\/b>$/i.test(tag)) safeTag = "</b>";
+    else if (/^<\/span>$/i.test(tag)) safeTag = "</span>";
+    else safeTag = '<span class="mono">';
+    tags.push(safeTag);
+    return `\uE000${tags.length - 1}\uE001`;
+  });
+  return tokenized
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replace(/\uE000(\d+)\uE001/g, (_, index) => tags[Number(index)]);
+}
+
+// Reviewer explanations may contain inline emphasis. Only the two explicit
+// formatting forms in the gate contract survive; every other tag and every
+// attribute is escaped before insertion.
 export function GateNote({ html, variant, className = "" }) {
   if (!html) return null;
   const cls = "gate-note" + (variant ? " " + variant : "") + (className ? " " + className : "");
-  return <div className={cls} dangerouslySetInnerHTML={{ __html: html }} />;
+  return <div className={cls} dangerouslySetInnerHTML={{ __html: sanitizeReviewerHtml(html) }} />;
 }
 
 export function ConfBadge({ children, variant }) {

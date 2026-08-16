@@ -24,6 +24,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _RESEARCH_DIR = _REPO_ROOT / "research"
 
 _GATE_IDS_RE = re.compile(r"^gate_ids:\s*\[(.*?)\]", re.MULTILINE)
+_PAGE_KEY_RE = re.compile(r"^page_key:\s*([^\s]+)", re.MULTILINE)
 
 
 def load_research_notes(gate_id: str) -> list[str]:
@@ -49,3 +50,21 @@ def load_research_notes(gate_id: str) -> list[str]:
         if gate_id in ids:
             notes.append(text)
     return notes
+
+
+def load_research_page(page_key: str) -> str | None:
+    """Load the complete research instruction document for a workflow page.
+
+    Final synthesis is a page-level task rather than a decision gate, so its
+    instruction file deliberately has no ``gate_ids``. This companion lookup
+    keeps that document in the same authoritative, read-fresh path as the gate
+    notes instead of duplicating its scientific contract in application code.
+    """
+    if not _RESEARCH_DIR.exists():
+        return None
+    for path in sorted(_RESEARCH_DIR.glob("*.md")):
+        text = path.read_text()
+        match = _PAGE_KEY_RE.search(text)
+        if match and match.group(1).strip() == page_key:
+            return text
+    return None

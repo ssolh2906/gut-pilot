@@ -103,8 +103,12 @@ export function reducer(state, action) {
       return { ...state, log };
     }
 
-    case "SET_SESSION_ID":
-      return { ...state, sessionId: action.id };
+    case "START_SESSION":
+      // A new upload is a new scientific run. Never carry cached reasoning,
+      // unlocked pages, settings, results, or decision-log entries across
+      // datasets. Preserve only the user's automation preference so a
+      // deliberate auto-proceed choice still applies to the fresh run.
+      return { ...initialState, autoProceed: state.autoProceed, sessionId: action.id };
     case "SET_SESSION_META":
       return { ...state, sessionMeta: action.meta };
     case "SET_STUDY_DESIGN_GATE":

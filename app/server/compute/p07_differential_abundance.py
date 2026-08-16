@@ -37,7 +37,14 @@ def run_differential_abundance(df: pd.DataFrame, grouping: list[str]) -> pd.Data
     for taxon in clr_df.index:
         x, y = clr_df.loc[taxon, cols_a].values, clr_df.loc[taxon, cols_b].values
         lfc.append((y.mean() - x.mean()) / np.log(2))
-        p.append(1.0 if np.allclose(x, y) else mannwhitneyu(x, y).pvalue)
+        # ``np.allclose(x, y)`` crashes when the groups have different sample
+        # counts (Baxter has 172 H vs 120 CRC). The only degenerate case that
+        # needs a forced p=1 is a single constant value across both groups.
+        p.append(
+            1.0
+            if np.unique(np.concatenate([x, y])).size == 1
+            else mannwhitneyu(x, y).pvalue
+        )
 
     lfc = np.array(lfc)
     return pd.DataFrame(
@@ -50,6 +57,63 @@ def run_differential_abundance(df: pd.DataFrame, grouping: list[str]) -> pd.Data
         },
         index=df.index,
     )
+
+
+def run_relative_abundance_differential_abundance(
+    df: pd.DataFrame, grouping: list[str], prevalence_threshold: float = 0.10
+) -> pd.DataFrame:
+    """Reproduce the transparent MicrobiomeHD Baxter re-analysis.
+
+    Counts are converted to per-sample relative abundance, features are
+    filtered by outcome-independent prevalence, and the two groups are
+    compared with Mann-Whitney U followed by Benjamini-Hochberg correction.
+    This is reported as a benchmark/sensitivity analysis, not mislabeled as
+    ALDEx2 or ANCOM-BC.
+    """
+    if not 0 <= prevalence_threshold <= 1:
+        raise ValueError("prevalence_threshold must be between 0 and 1")
+    groups = pd.Series(grouping, index=df.columns, dtype=str)
+    labels = list(pd.unique(groups))
+    if len(labels) != 2:
+        raise ValueError(
+            "run_relative_abundance_differential_abundance expects exactly two groups"
+        )
+
+    relative = df.div(df.sum(axis=0), axis=1)
+    prevalence = (df > 0).mean(axis=1)
+    relative = relative.loc[prevalence >= prevalence_threshold]
+    cols_a = groups[groups == labels[0]].index
+    cols_b = groups[groups == labels[1]].index
+
+    rows = []
+    for taxon in relative.index:
+        x = relative.loc[taxon, cols_a].to_numpy(dtype=float)
+        y = relative.loc[taxon, cols_b].to_numpy(dtype=float)
+        p_value = (
+            1.0
+            if np.unique(np.concatenate([x, y])).size == 1
+            else float(mannwhitneyu(x, y, alternative="two-sided").pvalue)
+        )
+        mean_a, mean_b = float(x.mean()), float(y.mean())
+        rows.append(
+            {
+                "taxon": taxon,
+                "mean_group_a": mean_a,
+                "mean_group_b": mean_b,
+                "log2_fold_change": float(
+                    np.log2((mean_b + 1e-12) / (mean_a + 1e-12))
+                ),
+                "p": p_value,
+                "direction": labels[1] if mean_b > mean_a else labels[0],
+                "prevalence": float(prevalence.loc[taxon]),
+            }
+        )
+
+    result = pd.DataFrame(rows).set_index("taxon")
+    result["q"] = multiple_testing_correction(
+        result["p"].tolist(), "bh", len(result)
+    )
+    return result.sort_values(["q", "p"])
 
 
 def known_taxa_crosscheck(da_results: pd.DataFrame, known_taxa: pd.DataFrame) -> pd.DataFrame:

@@ -26,6 +26,33 @@ _CITATIONS = {
     "mcmurdie2014": "10.1371/journal.pcbi.1003531",
     "gloor2017": "10.3389/fmicb.2017.02224",
 }
+_POSITION_REFS = {
+    "for": "schloss2024",
+    "against": "mcmurdie2014",
+    "third": "gloor2017",
+}
+
+
+def _validate_reasoning(reasoning):
+    if not isinstance(reasoning, dict):
+        raise ValueError("G6 response must be an object")
+    if not isinstance(reasoning.get("note_message"), str) or not reasoning["note_message"].strip():
+        raise ValueError("G6 note_message is missing")
+    positions = reasoning.get("positions")
+    if not isinstance(positions, list) or len(positions) != len(_POSITION_REFS):
+        raise ValueError("G6 must return all three literature positions")
+    by_side = {position.get("side"): position for position in positions if isinstance(position, dict)}
+    if set(by_side) != set(_POSITION_REFS):
+        raise ValueError("G6 literature position sides are invalid")
+    for side, ref_key in _POSITION_REFS.items():
+        position = by_side[side]
+        if position.get("ref_key") != ref_key:
+            raise ValueError(f"G6 {side} position has the wrong reference")
+        if not isinstance(position.get("claim"), str) or not position["claim"].strip():
+            raise ValueError(f"G6 {side} position is missing its claim")
+        for field in ("paper_id", "quote", "line_ref"):
+            if position.get(field) is not None and not isinstance(position[field], str):
+                raise ValueError(f"G6 {side} {field} must be text or null")
 
 _SYSTEM_PROMPT_BASE = """You are the reasoning layer behind "Gut Pilot: The Skeptical \
 Reviewer," an AI agent that reviews microbiome (16S rRNA) analysis pipelines. \
@@ -125,17 +152,66 @@ def _run_reasoning(retention_by_strategy):
         user_prompt,
         model=MODEL,
         tools=[paperclip_lookup_doi, paperclip_read_excerpt, paperclip_search],
+        validator=_validate_reasoning,
     )
 
 
 def build_g6_response(session):
-    rarefy_retention = _retention_preview(session.count_table, session.threshold)
-    n = session.count_table.shape[1]
+    comparison_table = session.count_table
+    if session.metadata is not None and "DiseaseState" in session.metadata.columns:
+        comparison_ids = [
+            sample for sample in session.count_table.columns
+            if str(session.metadata.loc[sample, "DiseaseState"]) in {"H", "CRC"}
+        ]
+        if comparison_ids:
+            comparison_table = session.count_table[comparison_ids]
+    rarefy_retention = _retention_preview(comparison_table, session.threshold)
+    n = comparison_table.shape[1]
     all_retention = {"retained": n, "total": n, "excluded": []}
 
-    reasoning = _run_reasoning(
-        {"rarefy": rarefy_retention, "css": all_retention, "clr": all_retention}
-    )
+    reasoning_cache_key = f"reasoning:g6:{session.rank}:{session.threshold}"
+    cached_reasoning = session.analysis_cache.get(reasoning_cache_key)
+    if cached_reasoning:
+        reasoning = cached_reasoning["reasoning"]
+        reasoning_source = cached_reasoning["reasoning_source"]
+    else:
+        try:
+            reasoning = _run_reasoning(
+                {"rarefy": rarefy_retention, "css": all_retention, "clr": all_retention}
+            )
+            _validate_reasoning(reasoning)
+            reasoning_source = "live_model"
+        except Exception:
+            reasoning = {
+            "note_message": (
+                f"For diversity endpoints, repeated rarefaction at the current "
+                f"depth retains <b>{rarefy_retention['retained']}/{rarefy_retention['total']}</b> "
+                "samples. Keep differential-abundance modeling on the filtered raw integer counts; "
+                "one transformed matrix should not be reused for every endpoint."
+            ),
+            "positions": [
+                {
+                    "side": "for", "ref_key": "schloss2024", "paper_id": None,
+                    "claim": "Repeated rarefaction is defensible for count-derived alpha and beta diversity when sequencing effort is uneven.",
+                    "quote": None, "line_ref": None,
+                },
+                {
+                    "side": "against", "ref_key": "mcmurdie2014", "paper_id": None,
+                    "claim": "Rarefying discards observations and should not be used as preprocessing for differential-abundance models.",
+                    "quote": None, "line_ref": None,
+                },
+                {
+                    "side": "third", "ref_key": "gloor2017", "paper_id": None,
+                    "claim": "A compositional analysis instead uses declared zero replacement and log-ratio geometry for compatible endpoints.",
+                    "quote": None, "line_ref": None,
+                },
+                ],
+            }
+            reasoning_source = "data_grounded_fallback"
+        session.analysis_cache[reasoning_cache_key] = {
+            "reasoning": reasoning,
+            "reasoning_source": reasoning_source,
+        }
 
     options = [
         {
@@ -174,6 +250,7 @@ def build_g6_response(session):
         "note": {"severity": "info", "message": reasoning["note_message"]},
         "positions": positions,
         "cascades": [],
+        "reasoning_source": reasoning_source,
     }
 
 

@@ -2,17 +2,53 @@
 // /api/*, proxied to the backend by Vite in dev (see vite.config.js) so the
 // browser never makes a cross-origin request.
 const BASE = "/api";
+const TRANSIENT_STATUSES = new Set([502, 503, 504]);
+const RETRY_DELAY_MS = 250;
+const inFlightReads = new Map();
 
-async function request(path, options) {
-  const res = await fetch(BASE + path, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
-  if (!res.ok) {
+function retryDelay(attempt) {
+  return new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS * attempt));
+}
+
+async function performRequest(path, options, method) {
+  const maxAttempts = method === "GET" ? 3 : 1;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    let res;
+    try {
+      res = await fetch(BASE + path, {
+        headers: { "Content-Type": "application/json" },
+        ...options,
+      });
+    } catch (error) {
+      if (attempt >= maxAttempts) throw error;
+      await retryDelay(attempt);
+      continue;
+    }
+
+    if (res.ok) return res.json();
+    if (attempt < maxAttempts && TRANSIENT_STATUSES.has(res.status)) {
+      await retryDelay(attempt);
+      continue;
+    }
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail || `${res.status} ${res.statusText}`);
   }
-  return res.json();
+}
+
+function request(path, options = {}) {
+  const method = (options.method ?? "GET").toUpperCase();
+  if (method !== "GET") return performRequest(path, options, method);
+
+  // React Strict Mode intentionally re-runs effects in development. Share
+  // one identical read while it is in flight so evidence/model endpoints do
+  // not incur duplicate latency or provider calls during the demo.
+  if (inFlightReads.has(path)) return inFlightReads.get(path);
+  const pending = performRequest(path, options, method).finally(() => {
+    inFlightReads.delete(path);
+  });
+  inFlightReads.set(path, pending);
+  return pending;
 }
 
 // Cheap — real ingestion, no model call either way.
@@ -39,10 +75,43 @@ export async function createSession(file, dataset) {
   return request(`/session${qs}`, { method: "POST" });
 }
 
+export function deleteSession(sessionId) {
+  return request(`/session/${sessionId}`, { method: "DELETE" });
+}
+
 // Cheap — compute-only (G5), no model call. Real per-sample depth from
 // whatever dataset createSession() actually loaded.
 export function getQcDepth(sessionId) {
   return request(`/session/${sessionId}/qc/depth`);
+}
+
+export function getAlphaDiversity(sessionId, correction = "bh", nIterations = 50) {
+  return request(
+    `/session/${sessionId}/alpha/diversity?correction=${encodeURIComponent(correction)}&n_iterations=${encodeURIComponent(nIterations)}`,
+  );
+}
+
+export function setRarefactionDepth(sessionId, depth) {
+  return request(`/session/${sessionId}/rarefaction/depth`, {
+    method: "POST",
+    body: JSON.stringify({ depth }),
+  });
+}
+
+export function getBetaDiversity(sessionId, metric = "jaccard") {
+  return request(`/session/${sessionId}/beta/diversity?metric=${encodeURIComponent(metric)}`);
+}
+
+export function getDifferentialAbundance(sessionId, prevalence = 0.10) {
+  return request(`/session/${sessionId}/differential-abundance?prevalence=${encodeURIComponent(prevalence)}`);
+}
+
+// Final scientific payoff: computed results plus a cached Claude + Paperclip
+// interpretation, with a deterministic literature-grounded fallback.
+export function getScientificSynthesis(sessionId, correction = "bh", prevalence = 0.10) {
+  return request(
+    `/session/${sessionId}/synthesis?correction=${encodeURIComponent(correction)}&n_iterations=50&metric=jaccard&prevalence=${encodeURIComponent(prevalence)}`,
+  );
 }
 
 // Not cheap — a live Claude + Paperclip call (tens of seconds, real tokens).

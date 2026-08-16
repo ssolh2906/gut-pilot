@@ -10,6 +10,7 @@ a lineage but differ only by that suffix are never silently merged here.
 """
 
 import tarfile
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -73,11 +74,18 @@ def extract_uploaded_tarball(file_obj, dest_dir: Path | None = None) -> Path:
     dest_dir = dest_dir or _UPLOADS_DIR
     dest_dir.mkdir(parents=True, exist_ok=True)
     file_obj.seek(0)
-    with tarfile.open(fileobj=file_obj, mode="r:gz") as tf:
-        top = tf.getnames()[0].split("/")[0]
-        root = dest_dir / top
-        if not root.exists():
-            tf.extractall(dest_dir)
+    try:
+        with tarfile.open(fileobj=file_obj, mode="r:gz") as tf:
+            names = [name for name in tf.getnames() if name.strip("/")]
+            if not names:
+                raise ValueError("uploaded tarball is empty")
+            top = names[0].split("/")[0]
+            root = dest_dir / top
+            # Python's data filter rejects absolute paths, traversal, unsafe
+            # links, and special files before anything is written.
+            tf.extractall(dest_dir, filter="data")
+    except (tarfile.TarError, OSError) as exc:
+        raise ValueError(f"uploaded file is not a safe gzip tar archive: {exc}") from exc
     return root
 
 
@@ -129,14 +137,34 @@ def _strip_trailing_total(raw_counts: pd.DataFrame) -> tuple[pd.DataFrame, dict]
 def validate_counts(df: pd.DataFrame) -> list[str]:
     """Hard-stop-worthy count validity issues. Empty list means the table is clean."""
     problems = []
-    values = df.to_numpy(dtype=float)
+    # Avoid materializing a second float64 copy of a large, already-integer
+    # OTU table. Mixed/non-integer inputs still coerce to a floating array so
+    # the same validation rules apply to malformed uploads.
+    values = df.to_numpy(copy=False)
+    if not np.issubdtype(values.dtype, np.number):
+        try:
+            values = df.to_numpy(dtype=float)
+        except (TypeError, ValueError):
+            return ["count table contains non-numeric values"]
     if not np.isfinite(values).all():
         problems.append("count table contains missing or non-finite (NaN/inf) values")
     if (values < 0).any():
         problems.append("count table contains negative values")
-    if not np.array_equal(values, np.round(values)):
+    if np.issubdtype(values.dtype, np.floating) and not np.array_equal(values, np.round(values)):
         problems.append("count table contains non-integer values")
     return problems
+
+
+def _compact_valid_counts(raw_counts: pd.DataFrame) -> pd.DataFrame:
+    """Use a lossless unsigned dtype sized for any within-sample aggregation."""
+    max_depth = int(raw_counts.sum(axis=0).max())
+    if max_depth <= np.iinfo(np.uint16).max:
+        dtype = np.uint16
+    elif max_depth <= np.iinfo(np.uint32).max:
+        dtype = np.uint32
+    else:
+        dtype = np.uint64
+    return raw_counts.astype(dtype, copy=False)
 
 
 def reconcile_metadata(count_columns, metadata: pd.DataFrame) -> dict:
@@ -245,6 +273,8 @@ def _load_from_layout(otu_table_path: Path, metadata_path: Path) -> IngestionRes
 
     taxonomy_map = {feature_id: parse_lineage(feature_id) for feature_id in raw_counts.index.unique()}
     parse_report = build_parse_report(raw_counts, taxonomy_map, metadata, trailing_total)
+    if parse_report["status"] == "PASS":
+        raw_counts = _compact_valid_counts(raw_counts)
 
     return IngestionResult(
         raw_counts=raw_counts, taxonomy_map=taxonomy_map, metadata=metadata, parse_report=parse_report
@@ -265,6 +295,11 @@ def load_uploaded_dataset(file_obj) -> IngestionResult:
     (caller should turn this into a 400, not a 500) if the tarball doesn't
     contain the expected files.
     """
-    root = extract_uploaded_tarball(file_obj)
-    layout = _discover_layout(root)
-    return _load_from_layout(layout["otu_table"], layout["metadata"])
+    _UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    # A unique extraction root prevents two archives with the same internal
+    # folder name from silently reusing one another's files. The frames are
+    # fully loaded before this context exits, so no upload artifacts remain.
+    with tempfile.TemporaryDirectory(prefix="gut-pilot-", dir=_UPLOADS_DIR) as temp_dir:
+        root = extract_uploaded_tarball(file_obj, Path(temp_dir))
+        layout = _discover_layout(root)
+        return _load_from_layout(layout["otu_table"], layout["metadata"])

@@ -10,7 +10,7 @@
 // longer has its own.
 import { useRef, useState } from "react";
 import { useAppState } from "../state/AppStateContext";
-import { createSession } from "../lib/api";
+import { createSession, deleteSession } from "../lib/api";
 import { fmt } from "../lib/data";
 
 const SCHEMA_ITEMS = [
@@ -47,7 +47,7 @@ export default function UploadPage() {
 
   function runUpload(file) {
     if (isUploading) return;
-    if (file) setFileName(file.name);
+    setFileName(file ? file.name : "Bundled Baxter demo cohort");
     setError(null);
     setIsUploading(true);
     setProgress(0);
@@ -58,7 +58,6 @@ export default function UploadPage() {
       if (p >= 100) {
         clearInterval(timerRef.current);
         setTimeout(async () => {
-          setIsUploading(false);
           // Real ingestion (compute/ingestion.py), no model call — a real
           // .tar.gz is genuinely extracted and parsed server-side; no file
           // falls back to the bundled crc_baxter dataset.
@@ -69,9 +68,19 @@ export default function UploadPage() {
             // Parse/validation failure (bad tarball, backend down, etc.) —
             // don't silently proceed with no data.
             setError(e.message);
+            setIsUploading(false);
             return;
           }
-          actions.setSessionId(session.session_id);
+          setIsUploading(false);
+          const previousSessionId = state.sessionId;
+          actions.startSession(session.session_id);
+          if (previousSessionId && previousSessionId !== session.session_id) {
+            // A Baxter session retains the raw OTU table in memory. Cleanup
+            // is best-effort because the new run is already valid and should
+            // not be blocked by a stale-session deletion failure.
+            deleteSession(previousSessionId).catch(() => {});
+          }
+          if (session.recommended_depth) actions.setThreshold(session.recommended_depth);
           actions.setSessionMeta({
             label: file ? file.name.replace(/\.(tar\.gz|tgz)$/i, "") : "crc_baxter",
             n_samples: session.n_samples,
@@ -156,6 +165,17 @@ export default function UploadPage() {
           >
             Browse files
           </button>
+          <button
+            type="button"
+            className="btn btn-sm"
+            disabled={isUploading}
+            onClick={(e) => {
+              e.stopPropagation();
+              runUpload(null);
+            }}
+          >
+            Use bundled Baxter demo
+          </button>
           <input
             ref={inputRef}
             type="file"
@@ -197,10 +217,13 @@ export default function UploadPage() {
       {fileName && !isUploading && !error && <div className="text-xs font-mono text-ink-2">Selected: {fileName}</div>}
 
       {error && (
-        <div className="gate-note warn flex items-center gap-2.5">
+        <div className="gate-note warn flex flex-wrap items-center gap-2.5">
           <span>{error}</span>
           <button type="button" className="btn btn-sm" onClick={() => { setError(null); setFileName(null); }}>
             Try a different file
+          </button>
+          <button type="button" className="btn btn-sm" onClick={() => runUpload(null)}>
+            Use bundled Baxter demo
           </button>
         </div>
       )}

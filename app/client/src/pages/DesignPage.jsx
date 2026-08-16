@@ -9,7 +9,7 @@
 // must be blocked, not just warned about, because this dataset has no
 // subject_id column to support it. The mock lets you click it and only
 // warns; here the option is disabled outright with the reason inline.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAppState } from "../state/AppStateContext";
 import { useAutoProceed } from "../hooks/useAutoProceed";
 import { getRank, setRank as postRank, getStudyDesign } from "../lib/api";
@@ -44,6 +44,7 @@ export default function DesignPage() {
   const [groupSource, setGroupSource] = useState(design.groupSource);
   const [batchHandling, setBatchHandling] = useState(design.batchHandling);
   const [pairing, setPairing] = useState(design.pairing);
+  const [autoFetchStarted, setAutoFetchStarted] = useState(false);
 
   async function fetchStudyDesign() {
     if (!state.sessionId) {
@@ -162,11 +163,16 @@ export default function DesignPage() {
     actions.advanceTo("qc");
   }
 
-  // Ready regardless of whether G4 was ever revealed — auto-proceed must
-  // never trigger a live paid call on its own; it only ever uses whatever
-  // rank data (or lack of it) is already there, same as a manual confirm
-  // click would if G4 was never opened.
-  useAutoProceed(true, confirm);
+  useEffect(() => {
+    if (!state.autoProceed || !state.sessionId || autoFetchStarted) return;
+    setAutoFetchStarted(true);
+    if (!sd) fetchStudyDesign();
+    if (!g4) fetchG4();
+    // The fetch functions intentionally use the current session only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.autoProceed, state.sessionId, sd, g4, autoFetchStarted]);
+
+  useAutoProceed(!!sd && !!g4 && !sdLoading && !g4Loading, confirm);
 
   return (
     <section className="flex flex-col gap-5">
@@ -180,7 +186,7 @@ export default function DesignPage() {
       {!sd && !sdLoading && (
         <Reveal
           title="Ask the reviewer about study design"
-          subtitle="One live call to Claude covering group definition, batch confounding, and sample independence together — grounded in this run's real metadata, takes 30–60 seconds"
+          subtitle="One evidence-grounded reviewer call covering group definition, batch confounding, and sample independence"
           stepLabel="step 1 of 1"
           onReveal={fetchStudyDesign}
         />
@@ -340,7 +346,7 @@ export default function DesignPage() {
           {!g4 && !g4Loading && (
             <Reveal
               title="Ask the reviewer for a rank recommendation"
-              subtitle="A live call to Claude, grounded in citations it verifies via Paperclip — takes 30–60 seconds"
+              subtitle="An evidence-grounded reviewer call with citation verification when the live provider is available"
               stepLabel="step 1 of 1"
               onReveal={fetchG4}
             />

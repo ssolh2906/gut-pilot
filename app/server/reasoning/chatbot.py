@@ -83,11 +83,21 @@ def chat_session(session, message: str, page: str | None = None) -> dict:
     recent = session.chat_history[-_MAX_HISTORY_MESSAGES:]
     messages = [{"role": h["role"], "content": h["text"]} for h in recent]
 
-    reply = run_tool_loop(
-        system_prompt,
-        messages,
-        model=MODEL,
-        tools=[paperclip_lookup_doi, paperclip_read_excerpt, paperclip_search],
-    )
+    try:
+        reply = run_tool_loop(
+            system_prompt,
+            messages,
+            model=MODEL,
+            tools=[paperclip_lookup_doi, paperclip_read_excerpt, paperclip_search],
+        )
+        source = "live_model"
+    except Exception:
+        reply = (
+            f"This run currently uses {session.rank} features, {session.norm_strategy} "
+            f"normalization, a {session.threshold:,}-read diversity threshold, and "
+            f"{session.beta_metric} beta diversity. The live literature reviewer is "
+            "temporarily unavailable, but the computed results and recorded gate decisions remain usable."
+        )
+        source = "data_grounded_fallback"
     session.chat_history.append({"role": "assistant", "text": reply})
-    return {"reply": reply}
+    return {"reply": reply, "reasoning_source": source}

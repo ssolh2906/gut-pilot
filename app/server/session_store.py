@@ -7,6 +7,9 @@ shared across processes.
 """
 
 import uuid
+import os
+import gc
+from collections import OrderedDict
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -30,9 +33,11 @@ class Session:
     normalized_table: pd.DataFrame | None = None  # css/clr output; None for rarefy
     log: list = field(default_factory=list)
     chat_history: list = field(default_factory=list)  # [{"role": "user"|"assistant", "text": str}]
+    analysis_cache: dict = field(default_factory=dict)
 
 
-_sessions: dict[str, Session] = {}
+_MAX_SESSIONS = max(1, int(os.environ.get("GUT_PILOT_MAX_SESSIONS", "3")))
+_sessions: OrderedDict[str, Session] = OrderedDict()
 
 
 def create_session(
@@ -53,8 +58,25 @@ def create_session(
         parse_report=parse_report,
     )
     _sessions[sid] = session
+    while len(_sessions) > _MAX_SESSIONS:
+        _sessions.popitem(last=False)
+        gc.collect()
     return session
 
 
 def get_session(sid: str) -> Session:
-    return _sessions[sid]
+    session = _sessions[sid]
+    _sessions.move_to_end(sid)
+    return session
+
+
+def delete_session(sid: str) -> bool:
+    """Release one in-memory run; returns whether it existed."""
+    existed = _sessions.pop(sid, None) is not None
+    if existed:
+        gc.collect()
+    return existed
+
+
+def session_stats() -> dict[str, int]:
+    return {"active": len(_sessions), "maximum": _MAX_SESSIONS}

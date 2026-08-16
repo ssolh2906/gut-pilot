@@ -37,6 +37,52 @@ _CITATIONS = {
     # randomized-run design note as the substitute justification.
     "baxter2016": "10.1186/s13073-016-0290-3",
 }
+_G2_STATUSES = {
+    "CLEAN", "ADJUST", "SENSITIVITY_REQUIRED", "NON_IDENTIFIABLE",
+    "NO_BATCH_VARIABLE_FOUND",
+}
+
+
+def _validate_reasoning(reasoning, g1_candidates, g2_candidates):
+    if not isinstance(reasoning, dict):
+        raise ValueError("study-design response must be an object")
+    if not all(isinstance(reasoning.get(gate), dict) for gate in ("g1", "g2", "g3")):
+        raise ValueError("study-design response is missing a gate")
+
+    g1 = reasoning["g1"]
+    candidate_levels = {
+        candidate["column"]: set(candidate["value_counts"])
+        for candidate in g1_candidates
+    }
+    selected = g1.get("selected_column")
+    comparison = g1.get("comparison_levels")
+    if selected not in candidate_levels:
+        raise ValueError("G1 selected_column was not a computed candidate")
+    if not isinstance(comparison, list) or len(comparison) < 2:
+        raise ValueError("G1 comparison_levels must contain at least two groups")
+    if not set(comparison).issubset(candidate_levels[selected]):
+        raise ValueError("G1 comparison_levels contain invented metadata values")
+    excluded = g1.get("excluded_levels", [])
+    if not isinstance(excluded, list) or not set(excluded).issubset(candidate_levels[selected]):
+        raise ValueError("G1 excluded_levels contain invented metadata values")
+    if not isinstance(g1.get("rationale"), str) or not g1["rationale"].strip():
+        raise ValueError("G1 rationale is missing")
+
+    status = reasoning["g2"].get("status")
+    if status not in _G2_STATUSES:
+        raise ValueError("G2 status is invalid")
+    if not g2_candidates and status != "NO_BATCH_VARIABLE_FOUND":
+        raise ValueError("G2 claimed a batch result without a computed batch variable")
+    if g2_candidates and status == "NO_BATCH_VARIABLE_FOUND":
+        raise ValueError("G2 ignored an available computed batch variable")
+    if not isinstance(reasoning["g2"].get("note_message"), str):
+        raise ValueError("G2 note_message is missing")
+    for field in ("paper_id", "quote", "line_ref"):
+        value = reasoning["g2"].get(field)
+        if value is not None and not isinstance(value, str):
+            raise ValueError(f"G2 {field} must be text or null")
+    if not isinstance(reasoning["g3"].get("note_message"), str):
+        raise ValueError("G3 note_message is missing")
 
 _SYSTEM_PROMPT_BASE = """You are the reasoning layer behind "Gut Pilot: The Skeptical \
 Reviewer," an AI agent that reviews microbiome (16S rRNA) analysis pipelines. \
@@ -141,6 +187,9 @@ def _run_reasoning(g1_candidates, g2_candidates, g2_diagnostics, g3_result):
         user_prompt,
         model=MODEL,
         tools=[paperclip_lookup_doi, paperclip_read_excerpt, paperclip_search],
+        validator=lambda reasoning: _validate_reasoning(
+            reasoning, g1_candidates, g2_candidates
+        ),
     )
 
 
@@ -197,7 +246,68 @@ def build_study_design_response(session):
             "n_samples": len(sample_ids), "repeated_subjects": 0, "pairing": "independent",
         }
 
-    reasoning = _run_reasoning(g1_candidates, g2_candidates, g2_diagnostics, g3_result)
+    try:
+        reasoning = _run_reasoning(g1_candidates, g2_candidates, g2_diagnostics, g3_result)
+        _validate_reasoning(reasoning, g1_candidates, g2_candidates)
+        reasoning_source = "live_model"
+    except Exception:
+        if not g1_candidates:
+            raise ValueError("No plausible biological grouping column was found in metadata")
+        preferred = next(
+            (candidate for candidate in g1_candidates if candidate["column"] == "DiseaseState"),
+            g1_candidates[0],
+        )
+        counts = preferred["value_counts"]
+        levels = list(counts)
+        comparison = [level for level in ("H", "CRC") if level in counts]
+        if len(comparison) < 2:
+            comparison = levels[:2]
+        excluded = [level for level in levels if level not in comparison]
+        if g2_candidates:
+            g2_status = "ADJUST"
+            g2_note = (
+                f"A candidate technical variable ({g2_candidates[0]['column']}) is present. "
+                "Carry it into the model and verify within-batch overlap before interpreting the group term."
+            )
+        else:
+            g2_status = "NO_BATCH_VARIABLE_FOUND"
+            g2_note = (
+                "No reusable batch, plate, lane, or sequencing-run variable is present in the uploaded metadata. "
+                "The public Baxter study reports randomized allocation across sequencing runs, so the demo proceeds "
+                "while recording that a direct batch cross-check is not possible from this file."
+            )
+        reasoning = {
+            "g1": {
+                "selected_column": preferred["column"],
+                "comparison_levels": comparison,
+                "excluded_levels": excluded,
+                "exclusion_rationale": (
+                    "Excluded levels represent a different clinical comparison and are not pooled with healthy controls."
+                    if excluded else None
+                ),
+                "rationale": (
+                    f"{preferred['column']} is the metadata-defined biological outcome and contains "
+                    + ", ".join(f"{level}={counts[level]}" for level in levels)
+                    + ". The primary comparison uses the two declared case-control levels rather than inferring groups from sample IDs."
+                ),
+                "human_confirmation_required": True,
+            },
+            "g2": {
+                "status": g2_status,
+                "note_message": g2_note,
+                "paper_id": None,
+                "quote": None,
+                "line_ref": None,
+            },
+            "g3": {
+                "note_message": (
+                    f"The analysis unit is the subject: {g3_result['n_samples']} samples map to "
+                    f"{g3_result['n_subjects']} subjects, with {g3_result['repeated_subjects']} repeated subjects. "
+                    f"Use an {g3_result['pairing']} design."
+                )
+            },
+        }
+        reasoning_source = "data_grounded_fallback"
 
     g1 = reasoning["g1"]
     g2 = reasoning["g2"]
@@ -213,6 +323,7 @@ def build_study_design_response(session):
     }
 
     return {
+        "reasoning_source": reasoning_source,
         "g1": {
             "recommendation": {"option_id": "metadata", "label": "RECOMMENDS METADATA-BASED GROUPING"},
             "selected_column": g1["selected_column"],

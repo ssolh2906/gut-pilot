@@ -157,6 +157,8 @@ activemq-data/
 
 # Environments
 .env
+.env.*
+!.env.example
 .envrc
 .venv
 env/
@@ -242,4 +244,3 @@ app/.DS_Store
 # harness's test-case manifest, not a build artifact) — explicit exception.
 !tests/eval/manifest/
 !tests/eval/manifest/**
-

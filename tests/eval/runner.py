@@ -8,8 +8,9 @@ Two grading paths:
   - Everything except check_type == "llm_judge" is graded in pure code,
     deterministically, with no model call and no API key required.
   - check_type == "llm_judge" entries call judge.py, which uses the
-    Anthropic API (requires ANTHROPIC_API_KEY). If the key isn't set, those
-    checks are reported as SKIPPED, never silently passed.
+    authenticated Claude CLI, Anthropic API, or OpenAI Responses API. If no
+    judge credential is available, those checks are reported as SKIPPED,
+    never silently passed.
 
 Usage:
     python tests/eval/runner.py --run path/to/run_result.json

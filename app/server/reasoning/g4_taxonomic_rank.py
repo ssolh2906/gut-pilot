@@ -31,6 +31,19 @@ _RANK_LABELS = {"phylum": "Phylum", "family": "Family", "genus": "Genus"}
 # Species deliberately not offered - 16S rarely resolves species reliably.
 _OFFERED_RANKS = ["phylum", "family", "genus"]
 
+
+def _validate_reasoning(reasoning, feature_counts):
+    if not isinstance(reasoning, dict):
+        raise ValueError("G4 response must be an object")
+    rank = reasoning.get("recommended_rank")
+    if rank not in _OFFERED_RANKS or feature_counts.get(rank, 0) <= 0:
+        raise ValueError("G4 recommended_rank is unavailable or invalid")
+    if not isinstance(reasoning.get("rationale"), str) or not reasoning["rationale"].strip():
+        raise ValueError("G4 rationale is missing")
+    for field in ("paper_id", "quote", "line_ref"):
+        if reasoning.get(field) is not None and not isinstance(reasoning[field], str):
+            raise ValueError(f"G4 {field} must be text or null")
+
 _SYSTEM_PROMPT_BASE = """You are the reasoning layer behind "Gut Pilot: The Skeptical \
 Reviewer," an AI agent that reviews microbiome (16S rRNA) analysis pipelines. \
 You are working the Taxonomic Rank gate (G4) - deciding what feature \
@@ -91,6 +104,7 @@ def _run_reasoning(feature_counts):
         user_prompt,
         model=MODEL,
         tools=[paperclip_lookup_doi, paperclip_read_excerpt, paperclip_search],
+        validator=lambda reasoning: _validate_reasoning(reasoning, feature_counts),
     )
 
 
@@ -102,7 +116,30 @@ def build_g4_response(session):
 
     feature_counts = compute_feature_counts(session.taxonomy_map)
     offered_counts = {r: feature_counts.get(r, 0) for r in _OFFERED_RANKS}
-    reasoning = _run_reasoning(offered_counts)
+    try:
+        reasoning = _run_reasoning(offered_counts)
+        _validate_reasoning(reasoning, offered_counts)
+        reasoning_source = "live_model"
+    except Exception:
+        # Demo-safe degradation: the recommendation is derived only from the
+        # real feature counts already computed above. No citation excerpt is
+        # invented when the model/provider or Paperclip is unavailable.
+        recommended = "genus" if offered_counts["genus"] else (
+            "family" if offered_counts["family"] else "phylum"
+        )
+        reasoning = {
+            "recommended_rank": recommended,
+            "rationale": (
+                f"Genus is the finest offered rank supported by this 16S table "
+                f"({offered_counts['genus']} named genera, compared with "
+                f"{offered_counts['family']} families and {offered_counts['phylum']} phyla). "
+                "It preserves marker resolution while avoiding species-level claims that the assay cannot support."
+            ),
+            "paper_id": None,
+            "quote": None,
+            "line_ref": None,
+        }
+        reasoning_source = "data_grounded_fallback"
 
     ranks = [
         {
@@ -141,6 +178,7 @@ def build_g4_response(session):
             }],
         },
         "warning": warning,
+        "reasoning_source": reasoning_source,
     }
 
 
@@ -154,6 +192,7 @@ def apply_g4_rank(session, rank):
 
     session.count_table = aggregate_by_rank(session.raw_counts, rank)
     session.rank = rank
+    session.analysis_cache.clear()
 
     n_features = session.count_table.shape[0]
     cascades = [{

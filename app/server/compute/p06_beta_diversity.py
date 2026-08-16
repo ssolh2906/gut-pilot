@@ -10,6 +10,7 @@ from skbio.stats.distance import permanova
 from skbio.stats.ordination import pcoa
 
 from .p04_normalization import clr_transform
+from .p04_rarefaction import rarefy_once
 
 
 def relative_abundance(df: pd.DataFrame) -> pd.DataFrame:
@@ -66,6 +67,46 @@ def jaccard_matrix(df: pd.DataFrame) -> pd.DataFrame:
             dist[i, j] = d
             dist[j, i] = d
     return pd.DataFrame(dist, index=samples, columns=samples)
+
+
+def repeated_rarefied_distance_matrix(
+    df: pd.DataFrame,
+    depth: int,
+    metric: str,
+    n_iterations: int = 5,
+    seed: int = 0,
+) -> pd.DataFrame:
+    """Average Jaccard or Bray-Curtis distances across rarefactions.
+
+    Samples below ``depth`` are excluded before subsampling. Averaging the
+    distance matrices avoids presenting one arbitrary subsample as the
+    definitive beta-diversity result while remaining quick enough for the UI.
+    """
+    retained = [sample for sample in df.columns if df[sample].sum() >= depth]
+    if len(retained) < 2:
+        raise ValueError("fewer than two samples meet the rarefaction depth")
+    table = df[retained]
+    rng = np.random.default_rng(seed)
+    distance_sum = None
+    for _ in range(n_iterations):
+        rarefied = pd.DataFrame(
+            {
+                sample: rarefy_once(table[sample].to_numpy(), depth, rng)
+                for sample in retained
+            },
+            index=table.index,
+        )
+        distance = (
+            jaccard_matrix(rarefied)
+            if metric == "jaccard"
+            else bray_curtis_matrix(relative_abundance(rarefied))
+            if metric == "bray"
+            else None
+        )
+        if distance is None:
+            raise ValueError("metric must be jaccard or bray")
+        distance_sum = distance if distance_sum is None else distance_sum + distance
+    return distance_sum / n_iterations
 
 
 def aitchison_matrix(df: pd.DataFrame) -> pd.DataFrame:

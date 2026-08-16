@@ -5,10 +5,11 @@ and turn that into a loop: run the pipeline, grade it, see exactly which test
 IDs got better or worse than last time, repeat. Built ahead of the backend
 MVP so it's ready the moment there's a real agent output to point it at.
 
-**Status as of 2026-08-15: fully working, verified live.** Both fixtures
-below pass/fail exactly as designed, including the 8 qualitative checks
-graded by a live LLM call, using this session's own `claude` CLI auth --
-no separate API key needed. Try it yourself:
+**Status as of 2026-08-16: all 37 checks are ready.** The live Baxter
+pipeline passes all 29 numeric/structural checks. The 8 qualitative checks
+are also covered by `tests/test_baxter_narrative_contract.py`; this harness
+can additionally grade them with a live LLM whenever an authenticated judge
+is available. Try it yourself:
 
 ```bash
 python tests/eval/runner.py --run tests/eval/fixtures/run_result.gold.json
@@ -55,17 +56,18 @@ python tests/eval/runner.py --run path/to/run_result.json --schema-only
 Exit code is `0` iff every non-blocked test passes -- wire it into a
 pre-merge hook or CI step directly.
 
-## Why the judge doesn't need `ANTHROPIC_API_KEY`
+## Judge provider fallback
 
 The qualitative checks need an LLM to grade prose against a rubric (a regex
 can't tell whether a gate-note "acknowledges both published normalization
 precedents"). `judge.py` runs those through the **`claude` CLI in
 non-interactive mode** (`claude -p --output-format json`), which reuses
-whatever auth is already active for your Claude Code session -- the same
-account, no separate credential to manage. It only falls back to a raw
-`ANTHROPIC_API_KEY` HTTP call if the CLI isn't on `PATH` at all (e.g. a bare
-CI runner with no Claude Code install). If neither is available, those 8
-checks report `SKIPPED`, never a silent pass.
+whatever auth is already active for your Claude Code session. If that route
+is missing or logged out, it tries `ANTHROPIC_API_KEY`, then the OpenAI
+Responses API when `OPENAI_API_KEY` is available. The OpenAI verdict uses a
+strict structured-output schema. If none is authenticated, those 8 checks
+report `SKIPPED`, never a silent pass or an evaluator crash. API keys stay in
+the evaluator process environment and are never written to the repository.
 
 One thing worth knowing: the first llm_judge call in this file's history hit
 a real LLM-judge failure mode -- the model's `reasoning` field argued for
@@ -133,11 +135,9 @@ until "Newly failing" stays empty and "Still failing" shrinks to nothing.
   agent is overfitting its prompts to Baxter's specific genera. Worth adding
   a second MicrobiomeHD cohort (`cdi_schubert` is already scoped in
   `research/`) as a held-out check once this one is solid.
-- **4 blocked tests** (TC-2.3, TC-4.2, TC-6.1, TC-6.2) need the reasoning
-  layer and/or real `beta_diversity.py`/`normalization.py` to exist before
-  they can run for real. They're in the manifest now so nothing has to be
-  re-derived later; `runner.py` reports them in their own bucket precisely
-  so that bucket is the thing to watch shrink as those stubs get replaced.
+- **No blocked tests remain.** TC-2.3, TC-4.2, TC-6.1, and TC-6.2 moved to
+  ready after the study-design reasoning, data-driven depth selection,
+  PERMANOVA, and dispersion implementations landed.
 - **LLM-judge is a single call per check**, not a majority vote. The
   reasoning-before-pass fix resolved the one inconsistency found during
   development, but for CRITICAL-severity qualitative checks in a real

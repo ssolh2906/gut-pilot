@@ -18,6 +18,8 @@ Grading backend, in order of preference:
      dependency), used only if the `claude` CLI can't be found AND
      ANTHROPIC_API_KEY is set. This exists for headless CI runners that don't
      have the CLI installed but do have an API key provisioned.
+  3. The OpenAI Responses API, used when OPENAI_API_KEY is set and the Claude
+     routes are unavailable. Its output is constrained to the judge schema.
 If neither is available, JudgeUnavailable is raised, and runner.py reports
 the check as SKIPPED -- never silently passed.
 
@@ -25,6 +27,8 @@ Env vars:
   CLAUDE_JUDGE_BINARY   force a specific claude CLI path (skips auto-detect)
   ANTHROPIC_EVAL_MODEL  model alias/name for grading (default: sonnet)
   ANTHROPIC_API_KEY     only used by the HTTP fallback, not the CLI path
+  OPENAI_EVAL_MODEL     OpenAI judge model (default: gpt-5.6)
+  OPENAI_API_KEY        server-side OpenAI fallback credential
 """
 import json
 import os
@@ -34,10 +38,13 @@ import subprocess
 import urllib.error
 import urllib.request
 
+from openai import OpenAI
+
 DEFAULT_MODEL = "sonnet"
 API_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
 HTTP_FALLBACK_MODEL = "claude-sonnet-5"  # the HTTP API wants a full model id, not an alias
+OPENAI_FALLBACK_MODEL = "gpt-5.6"
 
 GRADER_SYSTEM_PROMPT = """You are a strict, skeptical grader for a microbiome-analysis AI agent's \
 output. You are given a RUBRIC describing exactly what a piece of agent-generated text must \
@@ -134,22 +141,67 @@ def _call_via_http(system, user, model):
     return text
 
 
+def _call_via_openai(system, user, model):
+    """Use Responses structured output so a fallback verdict is valid JSON."""
+    if not os.environ.get("OPENAI_API_KEY"):
+        return None
+
+    # `pass` is a Python keyword. Build a tiny model dynamically so the
+    # serialized schema and returned object still use the exact public key.
+    from pydantic import ConfigDict, Field, create_model
+
+    verdict_model = create_model(
+        "JudgeVerdict",
+        reasoning=(str, ...),
+        pass_=(bool, Field(alias="pass")),
+        __config__=ConfigDict(populate_by_name=True, extra="forbid"),
+    )
+    response = OpenAI(timeout=45.0, max_retries=0).responses.parse(
+        model=model,
+        input=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        text_format=verdict_model,
+    )
+    parsed = response.output_parsed
+    if parsed is None:
+        raise RuntimeError("OpenAI judge returned no parsed verdict")
+    return parsed.model_dump_json(by_alias=True)
+
+
 def _call_model(system, user):
-    """Try the CLI first (no separate API key needed), then the HTTP fallback."""
+    """Try Claude first, then secure API fallbacks without masking a verdict."""
+    errors = []
     model_alias = os.environ.get("ANTHROPIC_EVAL_MODEL", DEFAULT_MODEL)
-    cli_result = _call_via_cli(system, user, model_alias)
-    if cli_result is not None:
-        return cli_result
+    try:
+        cli_result = _call_via_cli(system, user, model_alias)
+        if cli_result is not None:
+            return cli_result
+    except Exception as exc:
+        errors.append(f"Claude CLI: {exc}")
+
     http_model = os.environ.get("ANTHROPIC_EVAL_MODEL", HTTP_FALLBACK_MODEL)
-    http_result = _call_via_http(system, user, http_model)
-    if http_result is not None:
-        return http_result
+    try:
+        http_result = _call_via_http(system, user, http_model)
+        if http_result is not None:
+            return http_result
+    except Exception as exc:
+        errors.append(f"Anthropic API: {exc}")
+
+    openai_model = os.environ.get("OPENAI_EVAL_MODEL", OPENAI_FALLBACK_MODEL)
+    try:
+        openai_result = _call_via_openai(system, user, openai_model)
+        if openai_result is not None:
+            return openai_result
+    except Exception as exc:
+        errors.append(f"OpenAI API: {exc}")
+
+    attempted = f" Attempts failed: {' | '.join(errors)}" if errors else ""
     raise JudgeUnavailable(
-        "No grading backend available: the `claude` CLI was not found on PATH "
-        "(and CLAUDE_CODE_EXECPATH / CLAUDE_JUDGE_BINARY are not set to a valid "
-        "binary), and ANTHROPIC_API_KEY is not set for the HTTP fallback. "
-        "Install/authenticate the Claude Code CLI, or set ANTHROPIC_API_KEY, "
-        "to enable llm_judge checks."
+        "No authenticated grading backend is available. Authenticate the Claude "
+        "CLI, or set ANTHROPIC_API_KEY or OPENAI_API_KEY in the evaluator process."
+        + attempted
     )
 
 
