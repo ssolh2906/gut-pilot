@@ -6,6 +6,8 @@ crc_baxter dataset by default. See docs/gates.md for the full gate contract
 this is built against.
 """
 
+import math
+
 import numpy as np
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,6 +18,16 @@ from compute.ingestion import load_dataset, load_uploaded_dataset
 from compute.p02_taxonomy import aggregate_by_rank
 from compute.p03_qc_checks import depth_summary, flag_below_floor
 from compute.p04_rarefaction import build_rarefaction_curve, samples_above_depth
+from compute.p05_alpha_diversity import alpha_group_test, compute_alpha_diversity
+from compute.p06_beta_diversity import (
+    aitchison_matrix,
+    bray_curtis_matrix,
+    jaccard_matrix,
+    pcoa_ordination,
+    relative_abundance,
+    run_permanova,
+)
+from compute.p07_artifact_checks import check_normalization_metric_mismatch
 from reasoning.chatbot import chat_session
 from reasoning.g4_taxonomic_rank import apply_g4_rank, build_g4_response
 from reasoning.g6_normalization import apply_g6_strategy, build_g6_response
@@ -89,6 +101,17 @@ def _require_session(sid: str):
         return get_session(sid)
     except KeyError:
         raise HTTPException(status_code=404, detail="session not found")
+
+
+def _prefix_groups(sample_ids) -> dict[str, list[str]]:
+    """No real G1 group metadata on Session yet - fall back to the sample_id
+    prefix before "-" (e.g. "H-01" -> "H"), the convention the fixture itself
+    follows. Replace with a real metadata-driven grouping once G1 lands.
+    """
+    groups: dict[str, list[str]] = {}
+    for sample_id in sample_ids:
+        groups.setdefault(sample_id.split("-")[0], []).append(sample_id)
+    return groups
 
 
 @app.get("/api/session/{sid}/normalize/strategy")
@@ -198,3 +221,75 @@ def get_rarefaction_curves(sid: str, n_steps: int = 12, n_iter: int = 3):
         for sample_id in df.columns
     }
     return {"gate_id": "G7", "curves": curves}
+
+
+# Alpha diversity (Alpha page) - Compute-only, same reasoning as G5/G7 above.
+
+
+@app.get("/api/session/{sid}/alpha")
+def get_alpha_diversity(sid: str, depth: int | None = None, n_iterations: int = 20):
+    session = _require_session(sid)
+    threshold = session.threshold if depth is None else depth
+    rng = np.random.default_rng(0)
+    raw = compute_alpha_diversity(session.count_table, threshold, n_iterations, rng)
+    groups = _prefix_groups(session.count_table.columns)
+
+    group_tests = {}
+    if len(groups) == 2:
+        for metric in raw.index:
+            values_by_group = {g: raw.loc[metric, ids].dropna().tolist() for g, ids in groups.items()}
+            if all(values_by_group.values()):
+                group_tests[metric] = alpha_group_test(values_by_group)
+
+    metrics = {
+        sample: {
+            metric: (None if math.isnan(v := raw.loc[metric, sample]) else float(v))
+            for metric in raw.index
+        }
+        for sample in raw.columns
+    }
+
+    return {
+        "depth": threshold, "n_iterations": n_iterations,
+        "metrics": metrics, "groups": groups, "group_tests": group_tests,
+    }
+
+
+# Beta diversity (Beta page / G9) - Compute-only, same reasoning as G5/G7
+# above. `metric` defaults to session.beta_metric (set via G6) but can be
+# overridden per request to preview another metric without committing to it.
+
+_BETA_MATRIX_FNS = {
+    "bray": lambda df: bray_curtis_matrix(relative_abundance(df)),
+    "jaccard": jaccard_matrix,
+    "aitchison": aitchison_matrix,
+}
+
+
+@app.get("/api/session/{sid}/beta")
+def get_beta_diversity(sid: str, metric: str | None = None):
+    session = _require_session(sid)
+    metric = session.beta_metric if metric is None else metric
+    if metric not in _BETA_MATRIX_FNS:
+        raise HTTPException(status_code=400, detail=f"unknown beta metric: {metric}")
+
+    dist = _BETA_MATRIX_FNS[metric](session.count_table)
+    ordination = pcoa_ordination(dist)
+    coords = ordination["coords"].iloc[:, :2]
+    coords.columns = ["PC1", "PC2"]
+
+    groups = _prefix_groups(dist.index)
+    grouping = [next(g for g, ids in groups.items() if sample in ids) for sample in dist.index]
+    permanova_result = run_permanova(dist, grouping) if len(groups) == 2 else None
+
+    return {
+        "metric": metric,
+        "metric_mismatch_warning": check_normalization_metric_mismatch(session.norm_strategy, metric),
+        "distance_matrix": dist.round(4).to_dict(orient="index"),
+        "pcoa": {
+            "coords": coords.round(4).to_dict(orient="index"),
+            "proportion_explained": ordination["proportion_explained"].round(4).to_dict(),
+        },
+        "groups": groups,
+        "permanova": permanova_result,
+    }
