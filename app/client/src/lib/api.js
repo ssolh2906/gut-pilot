@@ -52,6 +52,13 @@ export function setNormalizeStrategy(sessionId, strategy) {
   });
 }
 
+// Cheap — pure Compute, no model call. Real per-sample rarefaction curves
+// (exact expected richness, see compute/p04_rarefaction.py) plus a
+// plateau-derived suggested depth (G7), for the Normalize page's chart.
+export function getRarefactionCurves(sessionId) {
+  return request(`/session/${sessionId}/rarefaction/curves`);
+}
+
 // Not cheap — same live Claude + Paperclip cost pattern as normalize/strategy.
 // Combined G1+G2+G3 in one call (see reasoning/study_design.py).
 export function getStudyDesign(sessionId) {

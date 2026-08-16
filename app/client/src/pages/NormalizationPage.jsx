@@ -15,20 +15,55 @@
 // checked.
 //
 // The rarefaction curve chart, depth slider, and "Reviewer proposal" note
-// below cover G7 (rarefaction depth) — client-side only for now, no G7
-// backend yet — shown once "Rarefaction" is the selected strategy.
-import { useEffect, useRef, useState } from "react";
+// below cover G7 (rarefaction depth) — real per-sample data from
+// GET .../rarefaction/curves (exact expected richness + a plateau-derived
+// suggested depth, see compute/p04_rarefaction.py), fetched once when
+// "Rarefaction" becomes the selected strategy. Threshold changes after
+// that are purely client-side (every sample's full curve + depth already
+// came back in that one fetch), so the chart/slider/retained-count react
+// instantly with no further network round trips.
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppState } from "../state/AppStateContext";
 import { useAutoProceed } from "../hooks/useAutoProceed";
-import { getNormalizeStrategy, setNormalizeStrategy } from "../lib/api";
-import { retained } from "../state/selectors";
+import { getNormalizeStrategy, setNormalizeStrategy, getRarefactionCurves } from "../lib/api";
 import { Opt, OptRow, GateNote, ConfBadge } from "../components/Gate";
 import ChartTools from "../components/ChartTools";
+import Spinner from "../components/Spinner";
 import { scaleLinear, tickFractions } from "../components/charts/chartHelpers";
-import { samples, richnessAt, THRESH_DEFAULT, fmt, groupName, groupColor, refLink, refShort } from "../lib/data";
+import { fmt, refLink, refShort } from "../lib/data";
 
 const STRATEGY_LABEL = { rarefy: "Rarefaction", css: "CSS scaling", clr: "CLR transform" };
 const SIDE_LABEL = { for: "For rarefaction", against: "Against rarefaction", third: "Third position" };
+
+// Real group labels are whatever the dataset's metadata says (e.g. the
+// crc_baxter DiseaseState column: "H" / "CRC" / "nonCRC"), not the mock's
+// fixed two-group H/C — so colors/names are assigned on the fly, in a
+// stable order, rather than hardcoded per label.
+const GROUP_PALETTE = ["var(--color-cat-6)", "var(--color-cat-3)", "var(--color-cat-5)", "var(--color-cat-7)"];
+// Keep the app's existing H=blue/CRC=red convention (every other page's
+// mock data uses cat-1/cat-8 for these two) for the labels real datasets
+// actually use; anything else falls back to the general palette above so
+// an unfamiliar dataset's groups still get distinct, stable colors.
+const GROUP_STYLE_OVERRIDE = {
+  H: { color: "var(--color-cat-1)", name: "Healthy" },
+  CRC: { color: "var(--color-cat-8)", name: "CRC" },
+  nonCRC: { color: "var(--color-cat-4)", name: "non-CRC" },
+};
+
+function useGroupStyle(rareSamples) {
+  return useMemo(() => {
+    const labels = [...new Set(rareSamples.map((s) => s.group))].sort();
+    const color = {};
+    const name = {};
+    let next = 0;
+    labels.forEach((g) => {
+      const override = GROUP_STYLE_OVERRIDE[g];
+      color[g] = override ? override.color : GROUP_PALETTE[next++ % GROUP_PALETTE.length];
+      name[g] = override ? override.name : g;
+    });
+    return { groupColor: (g) => color[g] ?? "var(--color-ink-3)", groupName: (g) => name[g] ?? g };
+  }, [rareSamples]);
+}
 
 const SparkleIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -44,14 +79,32 @@ const W = 900,
   T = 16,
   B = 40;
 
-function RareChart({ svgRef, threshold }) {
+function richnessAtDepth(s, depth) {
+  const curve = s.curve;
+  if (depth <= curve[0][0]) return curve[0][1];
+  for (let i = 1; i < curve.length; i++) {
+    if (depth <= curve[i][0]) {
+      const [d0, r0] = curve[i - 1];
+      const [d1, r1] = curve[i];
+      return d1 === d0 ? r1 : r0 + ((r1 - r0) * (depth - d0)) / (d1 - d0);
+    }
+  }
+  return curve[curve.length - 1][1];
+}
+
+function RareChart({ svgRef, threshold, samples, groupColor, groupName, xMax }) {
   const pw = W - L - R;
   const ph = H - T - B;
-  const maxD = Math.max(...samples.map((s) => s.depth));
-  const maxR = Math.max(...samples.map((s) => s.rMax)) * 1.05;
+  // xMax is capped to the cohort's typical depth range (see sliderMax in
+  // the parent), not stretched to the single deepest outlier sample - a
+  // real crc_baxter run has a couple of samples past 200k reads against a
+  // median around 10k, and plotting to that outlier's max would squeeze
+  // every other curve into a sliver on the left. Curves that run past
+  // xMax just draw off the right edge of the fixed viewBox instead.
+  const maxD = xMax;
+  const maxR = Math.max(...samples.map((s) => Math.max(...s.curve.filter((p) => p[0] <= maxD).map((p) => p[1])))) * 1.05;
   const x = scaleLinear(0, maxD, L, L + pw);
   const y = scaleLinear(0, maxR, T + ph, T);
-  const steps = 28;
 
   return (
     <div className="plot wide">
@@ -73,19 +126,16 @@ function RareChart({ svgRef, threshold }) {
         })}
 
         {samples.map((s) => {
-          let d = "";
-          for (let i = 0; i <= steps; i++) {
-            const dd = (s.depth * i) / steps;
-            d += (i ? "L" : "M") + x(dd).toFixed(1) + " " + y(richnessAt(s, dd)).toFixed(1) + " ";
-          }
+          const d = s.curve.map(([dd, rr], i) => (i ? "L" : "M") + x(dd).toFixed(1) + " " + y(rr).toFixed(1)).join(" ");
           const out = s.depth < threshold;
+          const plateauRichness = s.curve[s.curve.length - 1][1];
           return (
             <path
               key={s.id}
               d={d}
               className={"curve" + (out ? " out" : "")}
               stroke={groupColor(s.group)}
-              data-tip={`${s.id}|group=${groupName(s.group)}|max depth=${fmt(s.depth)} reads|plateau richness=${s.rMax.toFixed(0)}|richness at ${fmt(threshold)}=${richnessAt(s, Math.min(threshold, s.depth)).toFixed(1)}${out ? "|!Excluded at the current threshold" : ""}`}
+              data-tip={`${s.id}|group=${groupName(s.group)}|max depth=${fmt(s.depth)} reads|plateau richness=${plateauRichness.toFixed(0)}|richness at ${fmt(threshold)}=${richnessAtDepth(s, Math.min(threshold, s.depth)).toFixed(1)}${out ? "|!Excluded at the current threshold" : ""}`}
             />
           );
         })}
@@ -128,8 +178,69 @@ export default function NormalizationPage() {
   // the confirm step (and its real, billed Claude call) entirely.
   const [confirmedOnce, setConfirmedOnce] = useState(false);
 
+  // Real per-sample rarefaction curves (G7) — fetched once, lazily, the
+  // first time "Rarefaction" becomes the selected strategy (no point
+  // paying for it while CSS/CLR is selected, since neither uses a depth
+  // threshold). Everything after that (dragging the slider, hovering a
+  // curve) is client-side against this same payload.
+  const [rareData, setRareData] = useState(null);
+  const [rareLoading, setRareLoading] = useState(false);
+  const [rareError, setRareError] = useState(null);
+  // Once the user has actually dragged the slider, stop auto-snapping it
+  // to the freshly-loaded suggested_threshold — otherwise a slow fetch
+  // that resolves after they've already moved it would silently undo
+  // their choice.
+  const [thresholdTouched, setThresholdTouched] = useState(false);
+
   const rare = selected === "rarefy";
-  const kept = retained(state);
+  const rareSamples = rareData?.samples ?? [];
+  const { groupColor, groupName } = useGroupStyle(rareSamples);
+  const kept = rareData ? rareSamples.filter((s) => s.depth >= threshold) : [];
+  const groupLabels = useMemo(() => [...new Set(rareSamples.map((s) => s.group))].sort(), [rareSamples]);
+  const excludedAtSuggested = useMemo(
+    () => (rareData ? rareSamples.filter((s) => s.depth < rareData.suggested_threshold) : []),
+    [rareData, rareSamples]
+  );
+  // Slider range tracks this run's actual depth distribution instead of a
+  // fixed 500-10,000 band: the crc_baxter cohort has a long right tail
+  // (a handful of samples run past 200k reads), so the max is capped to
+  // the 90th percentile of real depths rather than stretched to the
+  // single largest outlier, which would make the slider nearly useless
+  // for the other 90% of samples.
+  const sliderMax = useMemo(() => {
+    if (!rareSamples.length) return 10000;
+    const depths = rareSamples.map((s) => s.depth).sort((a, b) => a - b);
+    const p90 = depths[Math.floor(0.9 * (depths.length - 1))];
+    return Math.max(2000, Math.ceil(p90 / 500) * 500);
+  }, [rareSamples]);
+
+  async function fetchRarefaction() {
+    if (!state.sessionId) return;
+    setRareLoading(true);
+    setRareError(null);
+    try {
+      const data = await getRarefactionCurves(state.sessionId);
+      setRareData(data);
+      if (!thresholdTouched) actions.setThreshold(data.suggested_threshold);
+    } catch (e) {
+      setRareError(e.message);
+    } finally {
+      setRareLoading(false);
+    }
+  }
+
+  const rareFetchedRef = useRef(false);
+  useEffect(() => {
+    if (!rare || rareFetchedRef.current || !state.sessionId) return;
+    rareFetchedRef.current = true;
+    fetchRarefaction();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rare, state.sessionId]);
+
+  function setThresholdManual(value) {
+    setThresholdTouched(true);
+    actions.setThreshold(value);
+  }
 
   async function fetchGate() {
     if (!state.sessionId) {
@@ -205,7 +316,12 @@ export default function NormalizationPage() {
   // never became true, and "Approve and compute" below (which requires it)
   // could never enable either.
   const confirmDisabled = confirming || (confirmedOnce && !hasPendingChange);
-  const canProceed = !!gate && confirmedOnce && !hasPendingChange;
+  const totalSamples = gate?.options?.[0]?.retention_preview?.total ?? rareSamples.length;
+  // While rarefaction is selected, don't let the reviewer approve ahead of
+  // the real per-sample data actually loading — the threshold and
+  // retained/excluded numbers on screen would still be the pre-fetch
+  // placeholders (empty `kept`), not real answers.
+  const canProceed = !!gate && confirmedOnce && !hasPendingChange && !(rare && (rareLoading || !rareData));
 
   function approve() {
     actions.addLog({
@@ -214,8 +330,8 @@ export default function NormalizationPage() {
       human: true,
       src: "human-in-the-loop",
       text: rare
-        ? `Depth approved at ${fmt(threshold)} reads per sample. ${kept.length} samples retained, ${samples.length - kept.length} excluded.`
-        : `${STRATEGY_LABEL[gate.strategy]} approved. All ${samples.length} samples retained.`,
+        ? `Depth approved at ${fmt(threshold)} reads per sample. ${kept.length} samples retained, ${totalSamples - kept.length} excluded.`
+        : `${STRATEGY_LABEL[gate.strategy]} approved. All ${totalSamples} samples retained.`,
     });
     actions.advanceTo("alpha");
   }
@@ -235,7 +351,8 @@ export default function NormalizationPage() {
 
       {(loading || (!gate && !error)) && (
         <div className="block appear">
-          <div className="block-body pad-t text-sm text-ink-2">
+          <div className="block-body pad-t text-sm text-ink-2 flex items-center gap-2.5">
+            <Spinner />
             Reviewer is weighing the normalization debate against this run's data and verifying its citations live — this takes a little while.
           </div>
         </div>
@@ -327,7 +444,25 @@ export default function NormalizationPage() {
             </div>
           </div>
 
-          {rare && (
+          {rare && (rareLoading || (!rareData && !rareError)) && (
+            <div className="block appear">
+              <div className="block-body pad-t text-sm text-ink-2 flex items-center gap-2.5">
+                <Spinner />
+                Computing real per-sample rarefaction curves (exact expected richness) and a plateau-derived depth for this run — a moment.
+              </div>
+            </div>
+          )}
+
+          {rare && rareError && (
+            <div className="gate-note warn flex items-center gap-2.5">
+              <span>{rareError}</span>
+              <button type="button" className="btn btn-sm" onClick={fetchRarefaction}>
+                Retry
+              </button>
+            </div>
+          )}
+
+          {rare && rareData && (
             <div className="agent">
               <div className="av">
                 <SparkleIcon />
@@ -335,10 +470,24 @@ export default function NormalizationPage() {
               <div>
                 <h4>Reviewer proposal</h4>
                 <p>
-                  I picked <span className="mono font-semibold">{fmt(THRESH_DEFAULT)} reads per sample</span> because rarefaction curves plateau for 22 of 24 samples by that depth, and Schloss (2024)
-                  found that rarefaction, meaning repeated subsampling rather than single-pass rarefying, gives the highest statistical power for alpha and beta diversity when depth is uneven across
-                  groups. Two samples (<span className="mono">H-09</span>, <span className="mono">C-04</span>) stay below the line and are excluded, rather than forcing the whole cohort down to their
-                  depth.
+                  I picked <span className="mono font-semibold">{fmt(rareData.suggested_threshold)} reads per sample</span> because that's the smallest depth where median marginal richness gain
+                  across this run's {fmt(totalSamples)} samples has dropped to 3% or less per 500 additional reads — the curves have effectively plateaued — and Schloss (2024) found that rarefaction,
+                  meaning repeated subsampling rather than single-pass rarefying, gives the highest statistical power for alpha and beta diversity when depth is uneven across groups.{" "}
+                  {excludedAtSuggested.length > 0 ? (
+                    <>
+                      {fmt(excludedAtSuggested.length)} sample{excludedAtSuggested.length === 1 ? "" : "s"} (
+                      {excludedAtSuggested.slice(0, 5).map((s, i) => (
+                        <span key={s.id}>
+                          {i > 0 && ", "}
+                          <span className="mono">{s.id}</span>
+                        </span>
+                      ))}
+                      {excludedAtSuggested.length > 5 ? `, +${excludedAtSuggested.length - 5} more` : ""}) stay below the line and are excluded, rather than forcing the whole cohort down to their
+                      depth.
+                    </>
+                  ) : (
+                    "Every sample in this run clears that depth, so none are excluded."
+                  )}
                 </p>
                 <div className="meta">
                   <a className="cite" href={refLink("schloss2024")} target="_blank" rel="noopener noreferrer">
@@ -352,27 +501,31 @@ export default function NormalizationPage() {
             </div>
           )}
 
-          {rare && (
+          {rare && rareData && (
             <div className="rare-grid">
               <div className="block">
                 <div className="block-head">
                   <div>
                     <h2>Rarefaction curves</h2>
-                    <p className="sub">Vertical line is the current threshold. Dimmed curves are excluded at that depth. Hover a curve for its plateau.</p>
+                    <p className="sub">
+                      Vertical line is the current threshold. Dimmed curves are excluded at that depth. Hover a curve for its plateau. {fmt(rareSamples.length)} samples from the real crc_baxter run.
+                    </p>
                   </div>
-                  <ChartTools svgRef={svgRef} name="rarefaction-curves" getCsvRows={() => [["sample", "group", "depth", "retained"], ...samples.map((s) => [s.id, groupName(s.group), s.depth, s.depth >= threshold ? "yes" : "no"])]} />
+                  <ChartTools
+                    svgRef={svgRef}
+                    name="rarefaction-curves"
+                    getCsvRows={() => [["sample", "group", "depth", "retained"], ...rareSamples.map((s) => [s.id, groupName(s.group), s.depth, s.depth >= threshold ? "yes" : "no"])]}
+                  />
                 </div>
                 <div className="block-body">
-                  <RareChart svgRef={svgRef} threshold={threshold} />
+                  <RareChart svgRef={svgRef} threshold={threshold} samples={rareSamples} groupColor={groupColor} groupName={groupName} xMax={sliderMax} />
                   <div className="legend">
-                    <div className="lg line">
-                      <i style={{ background: "var(--color-cat-1)" }} />
-                      Healthy
-                    </div>
-                    <div className="lg line">
-                      <i style={{ background: "var(--color-cat-8)" }} />
-                      CRC
-                    </div>
+                    {groupLabels.map((g) => (
+                      <div className="lg line" key={g}>
+                        <i style={{ background: groupColor(g) }} />
+                        {groupName(g)}
+                      </div>
+                    ))}
                     <div className="lg line">
                       <i style={{ background: "var(--color-ink-3)" }} />
                       Excluded at current depth
@@ -392,18 +545,23 @@ export default function NormalizationPage() {
                     <span className="v">{fmt(threshold)}</span>
                     <span className="u">reads / sample</span>
                   </div>
-                  <input type="range" min={500} max={10000} step={50} value={threshold} aria-label="Rarefaction depth" onChange={(e) => actions.setThreshold(+e.target.value)} />
+                  <input type="range" min={500} max={sliderMax} step={50} value={threshold} aria-label="Rarefaction depth" onChange={(e) => setThresholdManual(+e.target.value)} />
                   <div className="scale">
                     <span>500</span>
-                    <span>10,000</span>
+                    <span>{fmt(sliderMax)}</span>
                   </div>
                   <div className="retain">
-                    <b>{kept.length} of {samples.length}</b> samples retained
+                    <b>{kept.length} of {rareSamples.length}</b> samples retained
                     <br />
-                    Healthy {kept.filter((s) => s.group === "H").length} against CRC {kept.length - kept.filter((s) => s.group === "H").length}
+                    {groupLabels.map((g, i) => (
+                      <span key={g}>
+                        {i > 0 && " against "}
+                        {groupName(g)} {kept.filter((s) => s.group === g).length}
+                      </span>
+                    ))}
                   </div>
                   <div className="sids">
-                    {samples.map((s) => {
+                    {rareSamples.map((s) => {
                       const out = s.depth < threshold;
                       return (
                         <div key={s.id} className={"sid" + (out ? " out" : "")} data-tip={`${s.id}|group=${groupName(s.group)}|reads=${fmt(s.depth)}${out ? "|!Excluded" : ""}`}>
@@ -413,8 +571,8 @@ export default function NormalizationPage() {
                       );
                     })}
                   </div>
-                  <button type="button" className="btn btn-sm mt-3 w-full" onClick={() => actions.setThreshold(THRESH_DEFAULT)}>
-                    Reset to proposal ({fmt(THRESH_DEFAULT)})
+                  <button type="button" className="btn btn-sm mt-3 w-full" onClick={() => setThresholdManual(rareData.suggested_threshold)}>
+                    Reset to proposal ({fmt(rareData.suggested_threshold)})
                   </button>
                 </div>
               </div>
