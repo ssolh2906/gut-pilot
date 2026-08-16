@@ -1,21 +1,12 @@
-"""Study design: group definition, batch effects, sample independence (G1, G2, G3)."""
+"""Study design: batch effects, sample independence (G2, G3).
+
+G1 (group definition) isn't here — inferring a naming pattern with any confidence
+is a judgment call for the reasoning/AI-agent layer, not a compute function.
+"""
 
 import pandas as pd
 from scipy.stats import fisher_exact
 from scipy.stats.contingency import association
-
-
-def infer_groups(sample_ids: list[str]) -> dict:
-    """Infer group membership from a sample ID naming pattern (G1).
-
-    Input: list of sample_id
-    Output: {"pattern": str, "groups": {sample_id: group_label}} (fake)
-    """
-    # TODO: real pattern detection (e.g. common prefix clustering). or.. this can be done by AI agent. Okay to modify or remove this function.
-    return {
-        "pattern": "prefix",
-        "groups": {s: s.split("-")[0] for s in sample_ids},
-    }
 
 
 def batch_group_crosstab(batch: dict[str, str], group: dict[str, str]) -> pd.DataFrame:

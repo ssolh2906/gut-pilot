@@ -1,9 +1,8 @@
-"""Normalization strategies (G6). No source notebook — not implemented yet.
-Fake data, same shape as the real thing, so the API/frontend can integrate against it now.
-"""
+"""Normalization strategies (G6). No source notebook."""
 
 import numpy as np
 import pandas as pd
+from skbio.stats.composition import clr, multi_replace
 
 
 def css_scale(df: pd.DataFrame) -> pd.DataFrame:
@@ -15,9 +14,13 @@ def css_scale(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def clr_transform(df: pd.DataFrame) -> pd.DataFrame:
-    """Centered log-ratio transform. Input: count df. Output: transformed df (same shape, fake)."""
-    # TODO: skbio.stats.composition.clr (needs zero replacement first, e.g.
-    # skbio.stats.composition.multiplicative_replacement).
-    rng = np.random.default_rng(1)
-    fake = rng.normal(0, 1.5, size=df.shape)
-    return pd.DataFrame(fake, index=df.index, columns=df.columns)
+    """Centered log-ratio transform, columns (samples) as compositions.
+
+    Input: count df (index=taxon, columns=sample), zero-replaced via
+    skbio's multi_replace before the log-ratio
+    Output: transformed df, same shape, index=taxon, columns=sample
+    """
+    rel = df.div(df.sum(axis=0), axis=1)
+    replaced = multi_replace(rel.T.values)
+    transformed = clr(replaced)
+    return pd.DataFrame(transformed.T, index=df.index, columns=df.columns)
