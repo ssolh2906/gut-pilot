@@ -5,23 +5,23 @@
 // for the other side of this contract.
 //
 // The GET call is a live Claude + Paperclip round trip (tens of seconds,
-// real tokens) — it only fires from the Reveal button, never automatically,
-// and the result is cached in AppState (g6Gate) so navigating away and back
-// doesn't re-trigger it. Picking a different strategy updates the UI purely
-// client-side (every option's retention_preview already came back in the
-// first fetch); only clicking "Confirm strategy" hits the backend again
-// (also a real, billed Claude call), which is also when cascading effects
-// on later gates (G7/G9) are checked.
+// real tokens) — it runs automatically once a session exists (same pattern
+// as the Design page), and the result is cached in AppState (g6Gate) so
+// navigating away and back doesn't re-trigger it. Picking a different
+// strategy updates the UI purely client-side (every option's
+// retention_preview already came back in the first fetch); only clicking
+// "Confirm strategy" hits the backend again (also a real, billed Claude
+// call), which is also when cascading effects on later gates (G7/G9) are
+// checked.
 //
 // The rarefaction curve chart, depth slider, and "Reviewer proposal" note
 // below cover G7 (rarefaction depth) — client-side only for now, no G7
 // backend yet — shown once "Rarefaction" is the selected strategy.
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppState } from "../state/AppStateContext";
 import { useAutoProceed } from "../hooks/useAutoProceed";
 import { getNormalizeStrategy, setNormalizeStrategy } from "../lib/api";
 import { retained } from "../state/selectors";
-import Reveal from "../components/Reveal";
 import { Opt, OptRow, GateNote, ConfBadge } from "../components/Gate";
 import ChartTools from "../components/ChartTools";
 import { scaleLinear, tickFractions } from "../components/charts/chartHelpers";
@@ -182,7 +182,29 @@ export default function NormalizationPage() {
     }
   }
 
+  // Runs automatically once a session exists — only the eventual CHOICE
+  // waits for the human, not the AI's read of the data (same pattern as
+  // the Design page). StrictMode double-invokes effects in dev, so a ref
+  // (not state) guards this to exactly once per mount — otherwise every
+  // page load would silently fire two live, billed Claude calls.
+  const gateFetchedRef = useRef(false);
+  useEffect(() => {
+    if (gateFetchedRef.current || gate || !state.sessionId) return;
+    gateFetchedRef.current = true;
+    fetchGate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.sessionId]);
+
   const hasPendingChange = gate && selected !== gate.strategy;
+  // Enabled either the first time (nothing confirmed yet - accepting the
+  // recommendation itself still needs an explicit click, same billed-call
+  // reasoning as confirmedOnce above) or whenever the selection has since
+  // changed. Previously only checked hasPendingChange, which is false right
+  // after the recommendation loads (selected already equals gate.strategy),
+  // so accepting the default was permanently unclickable - confirmedOnce
+  // never became true, and "Approve and compute" below (which requires it)
+  // could never enable either.
+  const confirmDisabled = confirming || (confirmedOnce && !hasPendingChange);
   const canProceed = !!gate && confirmedOnce && !hasPendingChange;
 
   function approve() {
@@ -211,16 +233,7 @@ export default function NormalizationPage() {
         </div>
       </div>
 
-      {!gate && !loading && (
-        <Reveal
-          title="Ask the reviewer for a recommendation"
-          subtitle="A live call to Claude, grounded in citations it verifies via Paperclip — takes 30–60 seconds"
-          stepLabel="step 1 of 1"
-          onReveal={fetchGate}
-        />
-      )}
-
-      {loading && (
+      {(loading || (!gate && !error)) && (
         <div className="block appear">
           <div className="block-body pad-t text-sm text-ink-2">
             Reviewer is weighing the normalization debate against this run's data and verifying its citations live — this takes a little while.
@@ -299,11 +312,15 @@ export default function NormalizationPage() {
 
               <div className="page-foot mt-1">
                 <p className="hint">
-                  {hasPendingChange
-                    ? `Selecting ${STRATEGY_LABEL[selected]} — confirm to record the decision and check for effects on later gates.`
-                    : "This strategy is confirmed and logged."}
+                  {confirming
+                    ? "Confirming is a live Claude + Paperclip call, same as the recommendation itself — this takes 30–60 seconds too, not stuck."
+                    : hasPendingChange
+                      ? `Selecting ${STRATEGY_LABEL[selected]} — confirm to record the decision and check for effects on later gates.`
+                      : confirmedOnce
+                        ? "This strategy is confirmed and logged."
+                        : `Reviewer recommends ${STRATEGY_LABEL[selected]} — confirm to record the decision and check for effects on later gates.`}
                 </p>
-                <button type="button" className="btn btn-primary btn-sm" disabled={confirming || !hasPendingChange} onClick={confirmStrategy}>
+                <button type="button" className="btn btn-primary btn-sm" disabled={confirmDisabled} onClick={confirmStrategy}>
                   {confirming ? "Confirming…" : "Confirm strategy"}
                 </button>
               </div>

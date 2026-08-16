@@ -9,11 +9,10 @@
 // must be blocked, not just warned about, because this dataset has no
 // subject_id column to support it. The mock lets you click it and only
 // warns; here the option is disabled outright with the reason inline.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppState } from "../state/AppStateContext";
 import { useAutoProceed } from "../hooks/useAutoProceed";
 import { getRank, setRank as postRank, getStudyDesign } from "../lib/api";
-import Reveal from "../components/Reveal";
 import { OptRow, Opt, GateNote, ConfBadge } from "../components/Gate";
 import { samples, groupName, fmt, groupColor } from "../lib/data";
 
@@ -38,7 +37,10 @@ export default function DesignPage() {
   }, [state.groupVersion]);
 
   // ---- G1+G2+G3 (study design) — one combined live Claude + Paperclip
-  // call (reasoning/study_design.py), same Reveal-gated pattern as G4/G6.
+  // call (reasoning/study_design.py). Runs automatically once a session
+  // exists (see the effect below) — unlike G6/Normalize, this page's
+  // recommendations aren't Reveal-gated; only the eventual choice waits
+  // on the human.
   const [sdLoading, setSdLoading] = useState(false);
   const [sdError, setSdError] = useState(null);
   const [groupSource, setGroupSource] = useState(design.groupSource);
@@ -89,6 +91,27 @@ export default function DesignPage() {
       setG4Loading(false);
     }
   }
+
+  // Both recommendations run automatically on arrival — only the eventual
+  // CHOICE waits for the human, not the AI's read of the data. Refs (not
+  // state) guard each fetch to exactly once per mount: StrictMode's dev-only
+  // double-effect-invocation would otherwise fire two live, billed Claude
+  // calls back to back on every page load.
+  const sdFetchedRef = useRef(false);
+  useEffect(() => {
+    if (sdFetchedRef.current || sd || !state.sessionId) return;
+    sdFetchedRef.current = true;
+    fetchStudyDesign();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.sessionId]);
+
+  const g4FetchedRef = useRef(false);
+  useEffect(() => {
+    if (g4FetchedRef.current || g4 || !state.sessionId) return;
+    g4FetchedRef.current = true;
+    fetchG4();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.sessionId]);
 
   async function confirm() {
     setConfirming(true);
@@ -177,16 +200,7 @@ export default function DesignPage() {
         </div>
       </div>
 
-      {!sd && !sdLoading && (
-        <Reveal
-          title="Ask the reviewer about study design"
-          subtitle="One live call to Claude covering group definition, batch confounding, and sample independence together — grounded in this run's real metadata, takes 30–60 seconds"
-          stepLabel="step 1 of 1"
-          onReveal={fetchStudyDesign}
-        />
-      )}
-
-      {sdLoading && (
+      {(sdLoading || (!sd && !sdError)) && (
         <div className="block appear">
           <div className="block-body pad-t text-sm text-ink-2">
             Reviewer is checking the real metadata for a grouping variable, testing for batch confounding, and verifying sample independence — this takes a little while.
@@ -337,16 +351,7 @@ export default function DesignPage() {
           {g4 && <ConfBadge>{g4.recommendation.label}</ConfBadge>}
         </div>
         <div className="block-body flex flex-col gap-3">
-          {!g4 && !g4Loading && (
-            <Reveal
-              title="Ask the reviewer for a rank recommendation"
-              subtitle="A live call to Claude, grounded in citations it verifies via Paperclip — takes 30–60 seconds"
-              stepLabel="step 1 of 1"
-              onReveal={fetchG4}
-            />
-          )}
-
-          {g4Loading && (
+          {(g4Loading || (!g4 && !g4Error)) && (
             <p className="text-sm text-ink-2">
               Reviewer is weighing the rank trade-off against this dataset's real feature counts and verifying its citation live — this takes a little while.
             </p>
