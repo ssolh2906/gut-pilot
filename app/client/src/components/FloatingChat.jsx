@@ -12,6 +12,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAppState } from "../state/AppStateContext";
 import { sendChatMessage } from "../lib/api";
+import { formatChatReply } from "../lib/formatChat";
 
 const QUICK_PROMPTS = [
   "Flag low-depth samples",
@@ -75,8 +76,8 @@ export default function FloatingChat() {
     setMessages((m) => [...m, { id: nextId++, role: "me", text: t }]);
     setTyping(true);
     try {
-      const { reply } = await sendChatMessage(state.sessionId, t, state.currentPage);
-      setMessages((m) => [...m, { id: nextId++, role: "ai", text: reply }]);
+      const { reply, in_scope } = await sendChatMessage(state.sessionId, t, state.currentPage);
+      setMessages((m) => [...m, { id: nextId++, role: "ai", text: reply, inScope: in_scope !== false }]);
     } catch (e) {
       setMessages((m) => [...m, { id: nextId++, role: "ai", text: `Something went wrong reaching the reviewer: ${e.message}` }]);
     } finally {
@@ -98,7 +99,8 @@ export default function FloatingChat() {
           {messages.length === 0 ? (
             <>
               <p className="chat-empty">
-                Ask about the data, a decision the reviewer made, or what to check next — grounded in this run's actual state.
+                Ask about the data, a decision the reviewer made, or what to check next — grounded in this run's actual state. Scoped to this
+                microbiome analysis and the science behind it, not general questions.
               </p>
               <div className="chips dock-chips">
                 {QUICK_PROMPTS.map((p) => (
@@ -110,8 +112,15 @@ export default function FloatingChat() {
             </>
           ) : (
             messages.map((m) => (
-              <div key={m.id} className={"bub " + m.role}>
-                {m.text}
+              <div key={m.id} className={"bub " + m.role + (m.role === "ai" && m.inScope === false ? " out-of-scope" : "")}>
+                {m.role === "ai" ? (
+                  <>
+                    {m.inScope === false && <span className="bub-tag">Out of scope</span>}
+                    <span dangerouslySetInnerHTML={{ __html: formatChatReply(m.text) }} />
+                  </>
+                ) : (
+                  m.text
+                )}
               </div>
             ))
           )}
