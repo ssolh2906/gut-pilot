@@ -146,8 +146,7 @@ export default function RefsPage() {
           <div className="block">
             <div className="block-head">
               <div>
-                <h3>What could still explain this</h3>
-                <p className="sub">Limitations and alternative explanations for the claims above, stated plainly rather than as boilerplate.</p>
+                <h3>Statistical Considerations</h3>
               </div>
             </div>
             <div className="block-body">
