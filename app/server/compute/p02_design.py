@@ -34,11 +34,20 @@ def batch_association_stats(crosstab: pd.DataFrame) -> dict:
     return {"cramers_v": cramers_v, "fisher_exact_p": fisher_p}
 
 
-def check_sample_independence(sample_ids: list[str], metadata: pd.DataFrame) -> dict:
-    """Check whether samples look independent or paired/repeated-measures (G3).
+def check_sample_independence(sample_ids: list[str], metadata: pd.DataFrame, subject_column: str) -> dict:
+    """Check for repeated-subject (paired/repeated-measures) structure (G3).
+    Purely mechanical duplicate check — which metadata column identifies a subject,
+    and what to do with the result, is a judgment for the reasoning/AI-agent layer.
 
-    Input: list of sample_id, metadata DataFrame (indexed by sample_id)
-    Output: {"pairing": "independent"|"paired"} (fake)
+    Input: list of sample_id, metadata DataFrame (indexed by sample_id), name of the
+    column in metadata that identifies a subject
+    Output: {"pairing": "independent"|"paired",
+             "repeated_subjects": {subject_id: [sample_id, ...]}} (empty if independent)
     """
-    # TODO: real check (e.g. repeated subject_id in metadata).
-    return {"pairing": "independent"}
+    subjects = metadata.loc[sample_ids, subject_column]
+    counts = subjects.value_counts()
+    repeated = counts[counts > 1].index
+    if len(repeated) == 0:
+        return {"pairing": "independent", "repeated_subjects": {}}
+    repeated_subjects = {str(s): subjects[subjects == s].index.tolist() for s in repeated}
+    return {"pairing": "paired", "repeated_subjects": repeated_subjects}
