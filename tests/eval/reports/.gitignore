@@ -1,0 +1,5 @@
+# Iteration artifacts from loop.py -- reproducible from a RUN.json + the
+# manifest, not source. Keep the directory (.gitkeep) but not its contents.
+*
+!.gitignore
+!.gitkeep

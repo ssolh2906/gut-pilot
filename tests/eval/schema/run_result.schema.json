@@ -1,0 +1,173 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://gut-pilot/schema/run_result.schema.json",
+  "title": "Gut Pilot RUN.JSON contract",
+  "description": "PROPOSED contract for what the agent pipeline emits for one completed run. This is what tests/eval/runner.py reads to grade a run against tests/eval/manifest/crc_baxter_manifest.json. Confirm field names with the backend/reasoning-layer owner before treating this as final -- if a real field is named differently, fix the 'path' in the manifest, not this schema, unless the shape itself is wrong.",
+  "type": "object",
+  "required": [
+    "meta", "ingestion", "study_design", "raw_qc", "normalization",
+    "alpha_diversity", "beta_diversity", "differential_abundance",
+    "synthesis", "decision_log"
+  ],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["dataset_id", "group_a", "group_b"],
+      "properties": {
+        "dataset_id": {"type": "string"},
+        "group_a": {"type": "string", "description": "e.g. 'H'"},
+        "group_b": {"type": "string", "description": "e.g. 'CRC'"},
+        "run_timestamp": {"type": "string"},
+        "pipeline_version": {"type": "string"}
+      }
+    },
+    "ingestion": {
+      "type": "object",
+      "properties": {
+        "n_taxa_rows": {"type": "integer"},
+        "n_samples": {"type": "integer"},
+        "n_genera": {"type": "integer"},
+        "n_otus_unassigned": {"type": "integer"},
+        "samples_joined": {"type": "integer"},
+        "samples_dropped_on_join": {"type": "integer"},
+        "trailing_total_column_found": {"type": "boolean"}
+      }
+    },
+    "study_design": {
+      "type": "object",
+      "properties": {
+        "group_source": {"type": "string", "enum": ["metadata", "inferred", "manual", "none"]},
+        "groups": {"type": "object", "description": "group label -> sample count, full cohort"},
+        "comparison_groups": {"type": "object", "description": "group label -> sample count, groups actually compared"},
+        "dropped_groups": {"type": "array", "items": {"type": "string"}},
+        "drop_rationale": {"type": "string"},
+        "batch_column_present": {"type": "boolean"},
+        "batch_gate_note": {"type": "string"},
+        "pairing": {"type": "string", "enum": ["independent", "paired"]},
+        "n_unique_subjects": {"type": "integer"},
+        "rank": {"type": "string", "enum": ["phylum", "family", "genus", "species"]},
+        "feature_counts": {"type": "object", "description": "rank -> feature count, at least the chosen rank must be the real computed count"}
+      }
+    },
+    "raw_qc": {
+      "type": "object",
+      "properties": {
+        "depth_stats": {
+          "type": "object",
+          "properties": {
+            "min": {"type": "number"}, "median": {"type": "number"},
+            "max": {"type": "number"}, "mean": {"type": "number"}
+          }
+        },
+        "depth_floor": {"type": "number"},
+        "excluded_below_floor": {"type": "object", "description": "group label -> count excluded"},
+        "excluded_below_floor_pct": {"type": "object", "description": "group label -> percent excluded"},
+        "imbalance_flagged": {"type": "boolean"},
+        "imbalance_note": {"type": "string"},
+        "sanity_checklist": {"type": "object"}
+      }
+    },
+    "normalization": {
+      "type": "object",
+      "properties": {
+        "method": {"type": "string", "enum": ["rarefaction", "css", "clr"]},
+        "chosen_depth": {"type": "number", "description": "only meaningful if method == rarefaction"},
+        "retained_at_chosen_depth": {"type": "object", "description": "group label -> retained sample count"},
+        "considered_alternative_published_depth": {"type": "number"},
+        "retention_at_alternative_depth": {"type": "object", "description": "group label -> retained count, if a different published depth was checked and reported"},
+        "gate_note": {"type": "string", "description": "free text; graded by the llm_judge checks in the manifest"}
+      }
+    },
+    "alpha_diversity": {
+      "type": "object",
+      "properties": {
+        "significance_level": {"type": "number"},
+        "correction": {"type": "string", "enum": ["bh", "bonferroni", "none"]},
+        "metrics": {
+          "type": "object",
+          "description": "metric name -> {mean_group_a, mean_group_b, p, q}",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "mean_group_a": {"type": "number"},
+              "mean_group_b": {"type": "number"},
+              "p": {"type": "number"},
+              "q": {"type": "number"}
+            }
+          }
+        },
+        "expectation_check_text": {"type": "string", "description": "free text narrative reconciling metric-level results; graded by llm_judge"}
+      }
+    },
+    "beta_diversity": {
+      "type": "object",
+      "properties": {
+        "metric": {"type": "string", "enum": ["bray_curtis", "jaccard", "aitchison", "unifrac"]},
+        "permanova": {
+          "type": "object",
+          "properties": {
+            "r2": {"type": "number"}, "p": {"type": "number"},
+            "permutations": {"type": "integer"},
+            "dispersion": {"type": "number"}, "dispersion_p": {"type": "number"}
+          }
+        },
+        "narrative_text": {"type": "string"}
+      }
+    },
+    "differential_abundance": {
+      "type": "object",
+      "properties": {
+        "prevalence_filter": {"type": "number"},
+        "methods": {"type": "array", "items": {"type": "string"}},
+        "genera": {
+          "type": "object",
+          "description": "genus name -> result. MUST include every genus tested, not only significant ones, so negative-control checks (e.g. TC-7.4) can inspect a genus that did NOT come out significant.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "direction": {"type": "string"},
+              "q": {"type": "number"},
+              "p": {"type": "number"},
+              "methods_agreeing": {"type": "integer"},
+              "prevalence": {"type": "number"},
+              "flagged_as_significant": {"type": "boolean"}
+            }
+          }
+        },
+        "known_taxa_crosscheck": {"type": "array"}
+      }
+    },
+    "synthesis": {
+      "type": "object",
+      "properties": {
+        "summary_text": {"type": "string"},
+        "literature_validation_text": {"type": "string"},
+        "next_steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "hypothesis": {"type": "string"},
+              "experiment": {"type": "string"},
+              "uses_data_this_repo_has": {"type": "boolean"}
+            }
+          }
+        },
+        "limitations": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "decision_log": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "gate": {"type": "string"},
+          "agent_proposal": {"type": "string"},
+          "confidence": {"type": "number"},
+          "user_override": {"type": ["string", "null"]},
+          "override_reason": {"type": ["string", "null"]}
+        }
+      }
+    }
+  }
+}
