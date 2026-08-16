@@ -12,6 +12,7 @@ import { useRef, useState } from "react";
 import { useAppState } from "../state/AppStateContext";
 import { createSession } from "../lib/api";
 import { fmt } from "../lib/data";
+import Spinner from "../components/Spinner";
 
 const SCHEMA_ITEMS = [
   <>A <span className="font-mono">.tar.gz</span> in MicrobiomeHD format — an <span className="font-mono">RDP/*.rdp_assigned</span> OTU table plus a <span className="font-mono">*.metadata.txt</span> file</>,
@@ -40,7 +41,6 @@ export default function UploadPage() {
   const [fileName, setFileName] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [progress, setProgress] = useState(0);
   const [error, setError] = useState(null);
   const inputRef = useRef(null);
   const timerRef = useRef(null);
@@ -50,51 +50,47 @@ export default function UploadPage() {
     if (file) setFileName(file.name);
     setError(null);
     setIsUploading(true);
-    setProgress(0);
-    let p = 0;
-    timerRef.current = setInterval(() => {
-      p += 14 + Math.random() * 11;
-      setProgress(Math.min(p, 100));
-      if (p >= 100) {
-        clearInterval(timerRef.current);
-        setTimeout(async () => {
-          setIsUploading(false);
-          // Real ingestion (compute/ingestion.py), no model call — a real
-          // .tar.gz is genuinely extracted and parsed server-side; no file
-          // falls back to the bundled crc_baxter dataset.
-          let session;
-          try {
-            session = await createSession(file);
-          } catch (e) {
-            // Parse/validation failure (bad tarball, backend down, etc.) —
-            // don't silently proceed with no data.
-            setError(e.message);
-            return;
-          }
-          actions.setSessionId(session.session_id);
-
-          const pr = session.parse_report;
-          if (pr && pr.status === "HARD_STOP") {
-            // Per research/01_ingestion.md: stop and ask on anything that
-            // could change which observations enter the analysis, rather
-            // than silently proceeding with a table that failed validation.
-            setError(`Upload didn't pass validation: ${pr.hard_stops.join("; ")}`);
-            return;
-          }
-
-          actions.addLog({
-            page: "upload",
-            conf: 99,
-            src: "schema validator",
-            text: pr
-              ? `Loaded ${file ? file.name : "the crc_baxter dataset"}. ${fmt(pr.n_samples)} sample columns and ${fmt(pr.n_features)} feature rows.` +
-                (pr.metadata.supplied ? ` Metadata joined for ${fmt(pr.metadata.matched_samples)}/${fmt(pr.n_samples)} samples.` : " No metadata file supplied.")
-              : `Loaded ${file ? file.name : "the fixture dataset"}.`,
-          });
-          actions.advanceTo("design");
-        }, 240);
+    // Indeterminate — the spinner covers however long the real request
+    // takes, no percentage to fake. isUploading only clears once the real
+    // call actually resolves (success, HARD_STOP, or error), not before it.
+    timerRef.current = setTimeout(async () => {
+      // Real ingestion (compute/ingestion.py), no model call — a real
+      // .tar.gz is genuinely extracted and parsed server-side; no file
+      // falls back to the bundled crc_baxter dataset.
+      let session;
+      try {
+        session = await createSession(file);
+      } catch (e) {
+        // Parse/validation failure (bad tarball, backend down, etc.) —
+        // don't silently proceed with no data.
+        setIsUploading(false);
+        setError(e.message);
+        return;
       }
-    }, 120);
+      actions.setSessionId(session.session_id);
+
+      const pr = session.parse_report;
+      if (pr && pr.status === "HARD_STOP") {
+        // Per research/01_ingestion.md: stop and ask on anything that
+        // could change which observations enter the analysis, rather
+        // than silently proceeding with a table that failed validation.
+        setIsUploading(false);
+        setError(`Upload didn't pass validation: ${pr.hard_stops.join("; ")}`);
+        return;
+      }
+
+      setIsUploading(false);
+      actions.addLog({
+        page: "upload",
+        conf: 99,
+        src: "schema validator",
+        text: pr
+          ? `Loaded ${file ? file.name : "the crc_baxter dataset"}. ${fmt(pr.n_samples)} sample columns and ${fmt(pr.n_features)} feature rows.` +
+            (pr.metadata.supplied ? ` Metadata joined for ${fmt(pr.metadata.matched_samples)}/${fmt(pr.n_samples)} samples.` : " No metadata file supplied.")
+          : `Loaded ${file ? file.name : "the fixture dataset"}.`,
+      });
+      actions.advanceTo("design");
+    }, 240);
   }
 
   function handleFile(file) {
@@ -161,9 +157,7 @@ export default function UploadPage() {
 
           {isUploading && (
             <div className="flex flex-col items-center gap-2 mt-1">
-              <div className="bar-track">
-                <div className="bar-fill" style={{ width: `${progress}%` }} />
-              </div>
+              <Spinner size="lg" />
               <div className="text-[11px] font-mono text-ink-2">Parsing rows, extracting genus from lineage</div>
             </div>
           )}
