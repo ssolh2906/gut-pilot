@@ -1073,6 +1073,35 @@ input[type="range"]::-moz-range-thumb {
   height: 20px;
 }
 
+/* ============================================================ STAT STRIP
+   The PERMANOVA result row on the Beta page (R², p, permutations, ...). */
+.pv-strip {
+  display: flex;
+  gap: 26px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-line);
+}
+.pv {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pv .l {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--color-ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.pv .v {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 17px;
+  font-weight: 700;
+}
+
 /* ============================================================ REVEAL
    The "run the next step" button pattern used to progressively disclose
    each page's content instead of showing it all at once. */
@@ -1254,7 +1283,8 @@ input[type="range"]::-moz-range-thumb {
 .cell {
   cursor: pointer;
 }
-.cell.hot {
+.cell.hot,
+.cell:hover {
   stroke: var(--color-ink-0);
   stroke-width: 1.6;
 }
