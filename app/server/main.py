@@ -17,6 +17,15 @@ from compute.fixtures import make_fixture_count_table
 from compute.p03_qc_checks import depth_summary, flag_below_floor
 from compute.p04_rarefaction import build_rarefaction_curve, samples_above_depth
 from compute.p05_alpha_diversity import alpha_group_test, compute_alpha_diversity
+from compute.p06_beta_diversity import (
+    aitchison_matrix,
+    bray_curtis_matrix,
+    jaccard_matrix,
+    pcoa_ordination,
+    relative_abundance,
+    run_permanova,
+)
+from compute.p07_artifact_checks import check_normalization_metric_mismatch
 from reasoning.g6_normalization import apply_g6_strategy, build_g6_response
 from session_store import create_session, get_session
 
@@ -48,6 +57,17 @@ def _require_session(sid: str):
         return get_session(sid)
     except KeyError:
         raise HTTPException(status_code=404, detail="session not found")
+
+
+def _prefix_groups(sample_ids) -> dict[str, list[str]]:
+    """No real G1 group metadata on Session yet - fall back to the sample_id
+    prefix before "-" (e.g. "H-01" -> "H"), the convention the fixture itself
+    follows. Replace with a real metadata-driven grouping once G1 lands.
+    """
+    groups: dict[str, list[str]] = {}
+    for sample_id in sample_ids:
+        groups.setdefault(sample_id.split("-")[0], []).append(sample_id)
+    return groups
 
 
 @app.get("/api/session/{sid}/normalize/strategy")
@@ -118,9 +138,6 @@ def get_rarefaction_curves(sid: str, n_steps: int = 12, n_iter: int = 3):
 
 
 # Alpha diversity (Alpha page) - Compute-only, same reasoning as G5/G7 above.
-# Grouping isn't real metadata yet (no G1 group field on Session) - it falls
-# back to the sample_id prefix before "-" (e.g. "H-01" -> "H"), which is the
-# convention the fixture data itself follows.
 
 
 @app.get("/api/session/{sid}/alpha")
@@ -129,10 +146,7 @@ def get_alpha_diversity(sid: str, depth: int | None = None, n_iterations: int = 
     threshold = session.threshold if depth is None else depth
     rng = np.random.default_rng(0)
     raw = compute_alpha_diversity(session.count_table, threshold, n_iterations, rng)
-
-    groups: dict[str, list[str]] = {}
-    for sample_id in session.count_table.columns:
-        groups.setdefault(sample_id.split("-")[0], []).append(sample_id)
+    groups = _prefix_groups(session.count_table.columns)
 
     group_tests = {}
     if len(groups) == 2:
@@ -152,4 +166,44 @@ def get_alpha_diversity(sid: str, depth: int | None = None, n_iterations: int = 
     return {
         "depth": threshold, "n_iterations": n_iterations,
         "metrics": metrics, "groups": groups, "group_tests": group_tests,
+    }
+
+
+# Beta diversity (Beta page / G9) - Compute-only, same reasoning as G5/G7
+# above. `metric` defaults to session.beta_metric (set via G6) but can be
+# overridden per request to preview another metric without committing to it.
+
+_BETA_MATRIX_FNS = {
+    "bray": lambda df: bray_curtis_matrix(relative_abundance(df)),
+    "jaccard": jaccard_matrix,
+    "aitchison": aitchison_matrix,
+}
+
+
+@app.get("/api/session/{sid}/beta")
+def get_beta_diversity(sid: str, metric: str | None = None):
+    session = _require_session(sid)
+    metric = session.beta_metric if metric is None else metric
+    if metric not in _BETA_MATRIX_FNS:
+        raise HTTPException(status_code=400, detail=f"unknown beta metric: {metric}")
+
+    dist = _BETA_MATRIX_FNS[metric](session.count_table)
+    ordination = pcoa_ordination(dist)
+    coords = ordination["coords"].iloc[:, :2]
+    coords.columns = ["PC1", "PC2"]
+
+    groups = _prefix_groups(dist.index)
+    grouping = [next(g for g, ids in groups.items() if sample in ids) for sample in dist.index]
+    permanova_result = run_permanova(dist, grouping) if len(groups) == 2 else None
+
+    return {
+        "metric": metric,
+        "metric_mismatch_warning": check_normalization_metric_mismatch(session.norm_strategy, metric),
+        "distance_matrix": dist.round(4).to_dict(orient="index"),
+        "pcoa": {
+            "coords": coords.round(4).to_dict(orient="index"),
+            "proportion_explained": ordination["proportion_explained"].round(4).to_dict(),
+        },
+        "groups": groups,
+        "permanova": permanova_result,
     }
