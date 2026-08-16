@@ -5,6 +5,7 @@ import pandas as pd
 from scipy.spatial.distance import braycurtis, euclidean, jaccard
 from scipy.stats import f_oneway
 from skbio import DistanceMatrix
+from skbio.diversity import beta_diversity
 from skbio.stats.distance import permanova
 from skbio.stats.ordination import pcoa
 
@@ -49,19 +50,6 @@ def pcoa_ordination(dist_df: pd.DataFrame) -> dict:
     }
 
 
-# ---- STUB below: no source notebook, not implemented (G9). Fake data, same
-# shape as the real thing, so the API/frontend can integrate against it now. ----
-
-
-def _fake_symmetric_matrix(samples: list[str], seed: int) -> pd.DataFrame:
-    rng = np.random.default_rng(seed)
-    n = len(samples)
-    m = rng.uniform(0, 1, size=(n, n))
-    m = (m + m.T) / 2
-    np.fill_diagonal(m, 0)
-    return pd.DataFrame(m, index=samples, columns=samples)
-
-
 def jaccard_matrix(df: pd.DataFrame) -> pd.DataFrame:
     """Jaccard distance (presence/absence only, ignores abundance).
 
@@ -101,10 +89,28 @@ def aitchison_matrix(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def unifrac_matrix(df: pd.DataFrame, tree) -> pd.DataFrame:
-    """Phylogenetic UniFrac distance. Input: count df, phylogenetic tree. Output: symmetric distance df (fake)."""
-    # TODO: skbio.diversity.beta_diversity(metric="unweighted_unifrac", tree=tree, ...).
-    # No phylogenetic tree is available for this dataset yet.
-    return _fake_symmetric_matrix(df.columns.tolist(), seed=4)
+    """Unweighted UniFrac distance (phylogenetic beta diversity).
+
+    GUESS, NOT VALIDATED ON REAL DATA: no phylogenetic tree exists for this
+    project's datasets (crc_baxter/cdi_schubert have none; research/
+    06_beta_diversity_contextualized.md: "Do not compute UniFrac without a valid
+    phylogenetic tree"). This is wired against skbio's real API and smoke-tested
+    with a synthetic tree (skbio requires a rooted, strictly bifurcating tree —
+    root_at_midpoint() on an arbitrary multifurcating tree is NOT sufficient), but
+    never run against an actual biological tree, so treat the wiring as unverified.
+
+    Input: count df (index=taxon ID, columns=sample; taxon IDs must match tip
+    names in `tree`), tree = rooted skbio.tree.TreeNode
+    Output: symmetric distance DataFrame (index=columns=sample_id, diagonal 0)
+    """
+    result = beta_diversity(
+        metric="unweighted_unifrac",
+        counts=df.T.values,
+        ids=df.columns.tolist(),
+        taxa=df.index.tolist(),
+        tree=tree,
+    )
+    return pd.DataFrame(result.data, index=result.ids, columns=result.ids)
 
 
 def _centroid_distances(coords: np.ndarray, groups: pd.Series) -> np.ndarray:
