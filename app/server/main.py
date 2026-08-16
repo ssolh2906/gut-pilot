@@ -16,6 +16,8 @@ from compute.ingestion import load_dataset, load_uploaded_dataset
 from compute.p02_taxonomy import aggregate_by_rank
 from compute.p03_qc_checks import depth_summary, flag_below_floor
 from compute.p04_rarefaction import build_rarefaction_curve, samples_above_depth
+from compute.p05_alpha_diversity import alpha_group_test, compute_alpha_diversity
+from compute.p05_stats_utils import multiple_testing_correction
 from reasoning.chatbot import chat_session
 from reasoning.g4_taxonomic_rank import apply_g4_rank, build_g4_response
 from reasoning.g6_normalization import apply_g6_strategy, build_g6_response
@@ -221,3 +223,82 @@ def get_rarefaction_curves(sid: str, n_steps: int = 12, n_iter: int = 3):
         for sample_id in df.columns
     }
     return {"gate_id": "G7", "curves": curves}
+
+
+# ---- G8 (alpha diversity) --------------------------------------------------
+# Compute-only for now, same reasoning as G5/G7 above: no Reasoning/Evidence
+# layer yet, so this returns the numbers Compute produces, nothing more. The
+# significance-settings choice (alpha level, correction method) is a policy
+# pick, not something Claude needs to weigh in on, so this being compute-only
+# is the intended end state for G8, not a temporary gap like G5/G7 are.
+
+_PRIMARY_COMPARISON = ("H", "CRC")  # matches every bundled dataset's framing
+
+
+def _comparison_groups(session, sample_ids: list[str]) -> tuple[str, str] | None:
+    """Pick the two groups to run the significance test on. Prefers H vs CRC
+    (the framing every bundled dataset and the rest of the UI already
+    assumes) when both are present; falls back to whatever two groups exist
+    if there are exactly two; returns None if there's no metadata, or more
+    than two groups without an H/CRC pair to anchor on."""
+    groups = {sid: _group_for_sample(session, sid) for sid in sample_ids}
+    distinct = sorted({g for g in groups.values() if g is not None})
+    if all(g in distinct for g in _PRIMARY_COMPARISON):
+        return _PRIMARY_COMPARISON
+    if len(distinct) == 2:
+        return tuple(distinct)
+    return None
+
+
+@app.get("/api/session/{sid}/alpha/diversity")
+def get_alpha_diversity(sid: str, correction: str = "bh", n_iterations: int = 100):
+    session = _require_session(sid)
+    df = session.count_table
+    sample_ids = list(df.columns)
+    groups = {sid_: _group_for_sample(session, sid_) for sid_ in sample_ids}
+
+    rng = np.random.default_rng(0)
+    per_sample = compute_alpha_diversity(df, depth=session.threshold, n_iterations=n_iterations, rng=rng)
+    metrics = list(per_sample.index)
+
+    comparison = _comparison_groups(session, sample_ids)
+    group_means: dict[str, dict[str, float]] = {}
+    significance: dict[str, dict] = {}
+    if comparison:
+        group_a, group_b = comparison
+        p_values = []
+        for metric in metrics:
+            values_by_group = {
+                g: [per_sample.loc[metric, s] for s in sample_ids if groups[s] == g and not np.isnan(per_sample.loc[metric, s])]
+                for g in comparison
+            }
+            group_means[metric] = {g: (float(np.mean(v)) if v else None) for g, v in values_by_group.items()}
+            if all(len(v) >= 2 for v in values_by_group.values()):
+                test = alpha_group_test(values_by_group)
+                significance[metric] = test
+                p_values.append(test["p_value"])
+            else:
+                significance[metric] = None
+                p_values.append(None)
+
+        testable = [i for i, p in enumerate(p_values) if p is not None]
+        if testable:
+            q_values = multiple_testing_correction([p_values[i] for i in testable], correction, len(testable))
+            for i, q in zip(testable, q_values):
+                significance[metrics[i]]["q_value"] = q
+                significance[metrics[i]]["correction"] = correction
+
+    return {
+        "gate_id": "G8",
+        "depth": session.threshold,
+        "n_iterations": n_iterations,
+        "comparison_groups": list(comparison) if comparison else None,
+        "excluded_groups": sorted({g for g in groups.values() if g is not None and (not comparison or g not in comparison)}),
+        "per_sample": {
+            s: {m: (None if np.isnan(v := per_sample.loc[m, s]) else float(v)) for m in metrics}
+            for s in sample_ids
+        },
+        "sample_groups": groups,
+        "group_means": group_means,
+        "significance": significance,
+    }
