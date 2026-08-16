@@ -8,11 +8,13 @@
 // all already set above them on the page), so both render immediately
 // instead of behind "Draw..."/"Compute..." buttons. Continue is always
 // enabled for the same reason — there's no reveal state left to wait on.
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppState } from "../state/AppStateContext";
 import { useAutoProceed } from "../hooks/useAutoProceed";
+import { getAlphaSignificance } from "../lib/api";
 import { retained, adjustedP, sigCount, CORR_LABEL } from "../state/selectors";
-import { OptRow, Opt, GateNote } from "../components/Gate";
+import { OptRow, Opt, GateNote, ConfBadge } from "../components/Gate";
+import Spinner from "../components/Spinner";
 import ChartTools from "../components/ChartTools";
 import PageContextStrip from "../components/PageContextStrip";
 import { samples, fmt, groupName, taxonAt, CATS, ALPHA_METRICS, refLink, refShort } from "../lib/data";
@@ -236,9 +238,43 @@ function statsNoteHtml(state) {
 
 export default function AlphaPage() {
   const { state, actions } = useAppState();
+  const g8 = state.g8Gate;
   const [selectedId, setSelectedId] = useState(null);
   const svgRef = useRef(null);
   const kept = retained(state);
+
+  // ---- G8 (significance settings) — its own live Claude + Paperclip call,
+  // grounded in research/05_alpha_diversity_contextualized.md. Runs
+  // automatically once a session exists (see the effect below), same
+  // auto-fire pattern as Design/Normalize — only the eventual choice waits
+  // on the human, not the AI's read of the run.
+  const [g8Loading, setG8Loading] = useState(false);
+  const [g8Error, setG8Error] = useState(null);
+
+  async function fetchG8() {
+    if (!state.sessionId) {
+      setG8Error("No active session yet — go back to Upload first so the backend has a dataset loaded.");
+      return;
+    }
+    setG8Loading(true);
+    setG8Error(null);
+    try {
+      const data = await getAlphaSignificance(state.sessionId);
+      actions.setG8Gate(data);
+    } catch (e) {
+      setG8Error(e.message);
+    } finally {
+      setG8Loading(false);
+    }
+  }
+
+  const g8FetchedRef = useRef(false);
+  useEffect(() => {
+    if (g8FetchedRef.current || g8 || !state.sessionId) return;
+    g8FetchedRef.current = true;
+    fetchG8();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.sessionId]);
 
   function setAlphaLevel(value) {
     actions.setAlphaLevel(value);
@@ -268,8 +304,36 @@ export default function AlphaPage() {
             <h2>Significance settings</h2>
             <p className="sub">Set once, here, because this is the first screen with a p-value on it. These govern Alpha, Beta and Differential, and stay editable from the context strip.</p>
           </div>
+          {g8 && <ConfBadge>{g8.recommendation.alpha_level.label}</ConfBadge>}
         </div>
         <div className="block-body flex flex-col gap-4">
+          {(g8Loading || (!g8 && !g8Error)) && (
+            <p className="text-sm text-ink-2 flex items-center gap-2.5">
+              <Spinner />
+              Reviewer is checking group sizes, pairing, and rarefaction retention to ground the significance defaults for this run — this takes a little while.
+            </p>
+          )}
+
+          {g8Error && (
+            <div className="gate-note warn flex items-center gap-2.5">
+              <span>{g8Error}</span>
+              <button type="button" className="btn btn-sm" onClick={fetchG8}>
+                Retry
+              </button>
+            </div>
+          )}
+
+          {g8 && (
+            <GateNote
+              html={
+                g8.note.message +
+                (g8.citation?.quote
+                  ? ` <span class="mono">(${g8.citation.ref_key}, ${g8.citation.line_ref})</span>: "${g8.citation.quote}"`
+                  : "")
+              }
+            />
+          )}
+
           <div>
             <span className="label">Significance level</span>
             <OptRow>
@@ -278,7 +342,13 @@ export default function AlphaPage() {
                 { v: 0.05, l: "Convention" },
                 { v: 0.1, l: "Exploratory" },
               ].map((o) => (
-                <Opt key={o.v} pressed={state.alphaLevel === o.v} onClick={() => setAlphaLevel(o.v)} title={String(o.v)}>
+                <Opt
+                  key={o.v}
+                  pressed={state.alphaLevel === o.v}
+                  recommended={g8 && g8.recommendation.alpha_level.option_id === String(o.v)}
+                  onClick={() => setAlphaLevel(o.v)}
+                  title={String(o.v)}
+                >
                   {o.l}
                 </Opt>
               ))}
@@ -287,13 +357,13 @@ export default function AlphaPage() {
           <div>
             <span className="label">Multiple-testing correction</span>
             <OptRow>
-              <Opt pressed={state.correction === "bh"} onClick={() => setCorrection("bh")} title="Benjamini-Hochberg">
+              <Opt pressed={state.correction === "bh"} recommended={g8?.recommendation.correction.option_id === "bh"} onClick={() => setCorrection("bh")} title="Benjamini-Hochberg">
                 Controls FDR
               </Opt>
-              <Opt pressed={state.correction === "bonferroni"} onClick={() => setCorrection("bonferroni")} title="Bonferroni">
+              <Opt pressed={state.correction === "bonferroni"} recommended={g8?.recommendation.correction.option_id === "bonferroni"} onClick={() => setCorrection("bonferroni")} title="Bonferroni">
                 Controls FWER
               </Opt>
-              <Opt pressed={state.correction === "none"} onClick={() => setCorrection("none")} title="None">
+              <Opt pressed={state.correction === "none"} recommended={g8?.recommendation.correction.option_id === "none"} onClick={() => setCorrection("none")} title="None">
                 Raw p-values
               </Opt>
             </OptRow>

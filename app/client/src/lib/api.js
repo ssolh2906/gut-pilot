@@ -70,6 +70,16 @@ export function setRank(sessionId, rank) {
   });
 }
 
+// Not cheap — same live Claude + Paperclip cost pattern as normalize/strategy.
+export function getAlphaSignificance(sessionId) {
+  return request(`/session/${sessionId}/alpha/significance`);
+}
+
+// Not cheap — same live Claude + Paperclip cost pattern as normalize/strategy.
+export function getBetaMetric(sessionId) {
+  return request(`/session/${sessionId}/beta/metric`);
+}
+
 // Not cheap — every message is a live Claude call (Paperclip tools available
 // but only used when the question calls for it). Only call from an explicit
 // send action, never automatically.

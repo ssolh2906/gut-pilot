@@ -41,6 +41,10 @@ export const initialState = {
   g6Gate: null, // cached GET/POST .../normalize/strategy response. This is a
   // live Claude + Paperclip call, so it's fetched once on demand (see
   // NormalizationPage) and cached here rather than re-fetched on every mount.
+  g8Gate: null, // cached GET .../alpha/significance response — same caching
+  // rationale as g6Gate above.
+  g9Gate: null, // cached GET .../beta/metric response — same caching
+  // rationale as g6Gate above.
 };
 
 export function reducer(state, action) {
@@ -108,6 +112,10 @@ export function reducer(state, action) {
       return { ...state, g4Gate: action.data };
     case "SET_G6_GATE":
       return { ...state, g6Gate: action.data };
+    case "SET_G8_GATE":
+      return { ...state, g8Gate: action.data };
+    case "SET_G9_GATE":
+      return { ...state, g9Gate: action.data };
 
     case "GO_PAGE": {
       const idx = pageIndex(action.id);
