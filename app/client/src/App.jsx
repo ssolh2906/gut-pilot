@@ -95,7 +95,14 @@ function AppShell() {
   const toggleTheme = useTheme();
 
   return (
-    <div className="min-h-screen">
+    // pr-[60px] reserves a permanent right-hand gutter for the fixed
+    // DecisionLogRail (34px wide, `right: 0`, position: fixed — see
+    // .log-rail in index.css) so it has its own column and never overlaps
+    // the tab bar or page content, on any viewport width. Without this,
+    // the rail floats on top of whatever's at the container's right edge
+    // whenever the viewport is narrower than max-w-[1480px] plus padding —
+    // which is most laptop screens, not just an edge case.
+    <div className="min-h-screen pr-[60px]">
       <Tooltip />
 
       <header className="sticky top-0 z-50 bg-surface/88 backdrop-blur-md border-b border-line">

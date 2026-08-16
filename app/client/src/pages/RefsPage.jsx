@@ -143,24 +143,6 @@ export default function RefsPage() {
             </div>
           </div>
 
-          <div className="block">
-            <div className="block-head">
-              <div>
-                <h3>Statistical Considerations</h3>
-              </div>
-            </div>
-            <div className="block-body">
-              <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
-                {synth.limitations.map((l, i) => (
-                  <div key={i} style={{ borderLeft: "2px solid var(--color-line-2)", paddingLeft: 12 }}>
-                    <div className="text-sm font-medium">{l.title}</div>
-                    <div className="text-xs text-ink-2 mt-1 leading-relaxed" dangerouslySetInnerHTML={{ __html: l.body }} />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
           {/* ---------------------------------------------------------- 2. Future research suggestions */}
           <div className="block">
             <div className="block-head">
@@ -182,12 +164,40 @@ export default function RefsPage() {
                   <div className="text-xs text-ink-1 mt-1 leading-relaxed">
                     <b>Next step:</b> <span dangerouslySetInnerHTML={{ __html: step.experiment }} />
                   </div>
+                  {step.citation && (
+                    <blockquote className="border-l-2 border-line-2 pl-2.5 mt-2 text-xs italic text-ink-2 leading-relaxed">
+                      "{step.citation.quote}"
+                      <div className="not-italic font-mono text-[10px] text-ink-3 mt-1">{step.citation.line_ref}, as read from the paper</div>
+                      <a className="text-xs font-mono not-italic" href={step.citation.url} target="_blank" rel="noopener noreferrer">
+                        {step.citation.title} ↗
+                      </a>
+                    </blockquote>
+                  )}
                 </div>
               ))}
             </div>
           </div>
 
-          {/* ---------------------------------------------------------- 3. Sources used in this run */}
+          {/* ---------------------------------------------------------- 3. Statistical Considerations */}
+          <div className="block">
+            <div className="block-head">
+              <div>
+                <h3>Statistical Considerations</h3>
+              </div>
+            </div>
+            <div className="block-body">
+              <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
+                {synth.limitations.map((l, i) => (
+                  <div key={i} style={{ borderLeft: "2px solid var(--color-line-2)", paddingLeft: 12 }}>
+                    <div className="text-sm font-medium">{l.title}</div>
+                    <div className="text-xs text-ink-2 mt-1 leading-relaxed" dangerouslySetInnerHTML={{ __html: l.body }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* ---------------------------------------------------------- 4. Sources used in this run */}
           <div className="block">
             <div className="block-head">
               <div>

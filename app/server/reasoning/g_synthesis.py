@@ -15,7 +15,8 @@ output contract than the doc's own 7-section page layout describes.
 
 import json
 
-from .shared import DEFAULT_MODEL, build_system_prompt, run_gate_reasoning
+from .paperclip_tool import paperclip_read_excerpt, paperclip_search
+from .shared import DEFAULT_MODEL, build_system_prompt, run_gate_reasoning, verify_quote
 
 MODEL = DEFAULT_MODEL
 
@@ -65,6 +66,29 @@ cannot support alone, though a well-specified wet-lab or independent-cohort \
 validation is also fine when it's the right next step and clearly labeled as \
 such.
 
+For each next-step proposal whose rationale rests on an established \
+biological claim from the literature (e.g. "Fusobacterium promotes CRC via \
+X mechanism," not a purely internal sensitivity check like "re-run at a \
+different rarefaction depth"), back it with a real citation: call \
+paperclip_search with a specific query describing that biological claim, \
+then call paperclip_read_excerpt on the most relevant real result's corpus \
+document ID (the "PMC..." ID paperclip_search itself returns - you do not \
+need paperclip_lookup_doi for this) to find and quote a real supporting \
+passage with its real line number. Use the paper's title and source URL \
+exactly as paperclip_search printed them. If search turns up nothing \
+clearly relevant, or you cannot find a passage that actually supports the \
+specific claim, leave that step's "citation" as null rather than forcing an \
+approximate or fabricated one - a step grounded only in this project's own \
+data (no external claim) should also have "citation": null, not an \
+unrelated paper attached for the sake of having one. Quote one real, \
+contiguous span exactly as it reads in the excerpt - do not splice two \
+separate sentences from different parts of the paper together into what \
+looks like one continuous quote; if the single best sentence is shorter \
+than you'd like, quote just that sentence rather than joining it to another \
+one nearby. Every quote/line_ref/paper_id you report is independently \
+re-verified against the real paper before anyone sees it, so there is no \
+advantage to guessing.
+
 4. STATE limitations honestly, including ones the pipeline itself already \
 surfaced earlier (e.g. sequencing-depth imbalance from the Normalize page) - \
 omitting a limitation the run already flagged is an internal-consistency \
@@ -81,10 +105,11 @@ replication is a real, separate form of robustness you CAN claim).
 Never use causal language ("causes", "drives") for an association result - \
 use "associated with", "enriched in", "candidate", "hypothesis-generating".
 
-You have no tools on this call and do not need any: the real cross-check \
-table below already carries the literature comparison for every taxon that \
-matters here, so write directly from the data given rather than attempting \
-any lookup.
+The real cross-check table below already carries the literature comparison \
+for every taxon that matters for section 2 (literature validation), so \
+write that section directly from the data given rather than searching for \
+it. Your tools (paperclip_search, paperclip_read_excerpt) are for section 3 \
+(next steps) only, as described above.
 
 When you are done, respond with ONLY a fenced ```json block (no other text) \
 matching exactly this shape:
@@ -97,7 +122,19 @@ matching exactly this shape:
     /* 3-5 entries; MUST include genus-level resolution, cross-sectional/causality, and the depth-imbalance residual confound */
   ],
   "next_steps": [
-    {"title": "<short HTML-safe label, 2-6 words, may italicize a genus with <i>>", "hypothesis": "<the specific hypothesis this discriminates, 1 sentence, HTML-safe>", "experiment": "<the concrete next step, 1-2 sentences, HTML-safe, grounded in what this project actually has or a clearly-labeled external validation>"}
+    {
+      "title": "<short HTML-safe label, 2-6 words, may italicize a genus with <i>>",
+      "hypothesis": "<the specific hypothesis this discriminates, 1 sentence, HTML-safe>",
+      "experiment": "<the concrete next step, 1-2 sentences, HTML-safe, grounded in what this project actually has or a clearly-labeled external validation>",
+      "citation": {
+        "paper_id": "<the corpus document ID paperclip_search returned, e.g. 'PMC10900887'>",
+        "title": "<the paper's real title, exactly as paperclip_search printed it>",
+        "url": "<the real source URL, exactly as paperclip_search printed it>",
+        "quote": "<verbatim text from an L<n>: line you actually read via paperclip_read_excerpt>",
+        "line_ref": "<e.g. 'L45' or 'L45-L52', matching the quote>"
+      }
+      /* or "citation": null if this step doesn't rest on an external biological claim, or you couldn't find/verify a real supporting passage */
+    }
     /* 2-4 entries, ranked by information value first */
   ]
 }
@@ -112,15 +149,34 @@ def _run_reasoning(context: dict) -> dict:
         user_prompt,
         model=MODEL,
         max_tokens=3000,
+        tools=[paperclip_search, paperclip_read_excerpt],
     )
 
 
 def build_synthesis_response(context: dict) -> dict:
     reasoning = _run_reasoning(context)
+    next_steps = []
+    for step in reasoning["next_steps"]:
+        citation = step.get("citation") or {}
+        quote, line_ref = citation.get("quote"), citation.get("line_ref")
+        if quote and not verify_quote(citation.get("paper_id"), quote, line_ref):
+            quote, line_ref = None, None
+        next_steps.append({
+            "title": step["title"],
+            "hypothesis": step["hypothesis"],
+            "experiment": step["experiment"],
+            "citation": {
+                "paper_id": citation.get("paper_id"),
+                "title": citation.get("title"),
+                "url": citation.get("url"),
+                "quote": quote,
+                "line_ref": line_ref,
+            } if quote else None,
+        })
     return {
         "hero_finding": reasoning["hero_finding"],
         "summary_text": reasoning["summary_text"],
         "literature_validation_text": reasoning["literature_validation_text"],
         "limitations": reasoning["limitations"],
-        "next_steps": reasoning["next_steps"],
+        "next_steps": next_steps,
     }

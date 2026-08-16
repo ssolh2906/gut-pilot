@@ -87,7 +87,20 @@ _LINE_NUM_RE = re.compile(r"L(\d+)")
 
 
 def _normalize_ws(text: str) -> str:
-    return re.sub(r"\s+", " ", text).strip()
+    """Case-insensitive, and also collapses stray spaces PDF/HTML extraction
+    commonly leaves next to punctuation (e.g. "( P  = 0.045)" from stripped
+    italics tags around a variable name) - both are real, common artifacts
+    of how a real quote naturally differs from the source's raw extracted
+    text, not signs of fabrication. A live citation check on the Summary
+    page's next-steps caught this: a 100%-real, word-for-word quote was
+    rejected only because it started mid-sentence with a capitalized letter
+    where the source had lowercase. This must stay narrow - it should never
+    get looser about missing/extra/reordered WORDS, only whitespace and case
+    around them, so a genuinely spliced or altered quote still fails."""
+    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"([(\[])\s+", r"\1", text)
+    text = re.sub(r"\s+([)\].,;:])", r"\1", text)
+    return text.lower()
 
 
 def _parse_line_ref(line_ref: str) -> tuple[int, int] | None:
