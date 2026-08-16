@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 from scipy.spatial.distance import braycurtis, euclidean, jaccard
+from scipy.stats import f_oneway
 from skbio import DistanceMatrix
 from skbio.stats.distance import permanova
 from skbio.stats.ordination import pcoa
@@ -106,14 +107,57 @@ def unifrac_matrix(df: pd.DataFrame, tree) -> pd.DataFrame:
     return _fake_symmetric_matrix(df.columns.tolist(), seed=4)
 
 
+def _centroid_distances(coords: np.ndarray, groups: pd.Series) -> np.ndarray:
+    dists = np.zeros(len(groups))
+    for g in groups.unique():
+        mask = (groups == g).values
+        centroid = coords[mask].mean(axis=0)
+        dists[mask] = np.linalg.norm(coords[mask] - centroid, axis=1)
+    return dists
+
+
+def permdisp(dist_df: pd.DataFrame, grouping: list[str], permutations: int = 999, seed: int = 0) -> dict:
+    """PERMDISP: test for homogeneity of multivariate dispersion across groups
+    (Anderson 2006) — skbio has no direct implementation. Approximates it on the
+    PCoA embedding of the distance matrix: per-sample distance to its group's
+    centroid, one-way ANOVA F across groups, p-value via label permutation.
+
+    Input: symmetric distance df, per-sample group labels (same order as
+    dist_df.index), number of label permutations, rng seed
+    Output: {"dispersion": mean distance-to-centroid across all samples,
+             "f_stat": float, "p": float, "permutations": int}
+    """
+    coords = pcoa_ordination(dist_df)["coords"].loc[dist_df.index].values
+    groups = pd.Series(grouping, index=dist_df.index)
+
+    observed_dists = _centroid_distances(coords, groups)
+    observed_f, _ = f_oneway(*[observed_dists[(groups == g).values] for g in groups.unique()])
+
+    rng = np.random.default_rng(seed)
+    at_least_as_extreme = 0
+    for _ in range(permutations):
+        shuffled = pd.Series(rng.permutation(groups.values), index=groups.index)
+        dists = _centroid_distances(coords, shuffled)
+        f_stat, _ = f_oneway(*[dists[(shuffled == g).values] for g in shuffled.unique()])
+        if f_stat >= observed_f:
+            at_least_as_extreme += 1
+
+    return {
+        "dispersion": float(observed_dists.mean()),
+        "f_stat": float(observed_f),
+        "p": (at_least_as_extreme + 1) / (permutations + 1),
+        "permutations": permutations,
+    }
+
+
 def run_permanova(dist_df: pd.DataFrame, grouping: list[str]) -> dict:
     """PERMANOVA test on a distance matrix against a grouping (Anderson 2001).
     r2 is derived from skbio's pseudo-F statistic via the standard ANOVA identity
     R2 = (F*(a-1)) / (F*(a-1) + (n-a)), since skbio doesn't report R2 directly.
+    dispersion/dispersion_p come from permdisp() (see above).
 
     Input: symmetric distance df, per-sample group labels (same order as dist_df.index)
     Output: {"r2", "p", "permutations", "dispersion", "dispersion_p"}
-    (dispersion/dispersion_p are still fake — no PERMDISP/betadisper in skbio)
     """
     dm = DistanceMatrix(dist_df.values, ids=dist_df.index.tolist())
     result = permanova(dm, grouping, permutations=999)
@@ -122,13 +166,11 @@ def run_permanova(dist_df: pd.DataFrame, grouping: list[str]) -> dict:
     a = result["number of groups"]
     r2 = (f_stat * (a - 1)) / (f_stat * (a - 1) + (n - a))
 
-    # TODO: dispersion/dispersion_p (PERMDISP) — no skbio implementation; would need a
-    # manual distance-to-centroid permutation test.
-    rng = np.random.default_rng(5)
+    disp = permdisp(dist_df, grouping)
     return {
         "r2": float(r2),
         "p": float(result["p-value"]),
         "permutations": int(result["number of permutations"]),
-        "dispersion": float(rng.uniform(0.2, 0.6)),
-        "dispersion_p": float(rng.uniform(0.1, 0.5)),
+        "dispersion": disp["dispersion"],
+        "dispersion_p": disp["p"],
     }
