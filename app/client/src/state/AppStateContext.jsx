@@ -6,7 +6,7 @@
 import { createContext, useContext, useMemo, useReducer } from "react";
 import { reducer, initialState } from "./store";
 import { samples, PAGE_LABEL, FLOOR_DEFAULT } from "../lib/data";
-import { pageIndex } from "../lib/pages";
+import { PAGES, pageIndex } from "../lib/pages";
 
 const AppStateCtx = createContext(null);
 
@@ -28,10 +28,31 @@ export function AppStateProvider({ children }) {
       advanceTo: (id) => {
         dispatch({ type: "UNLOCK", id });
         dispatch({ type: "GO_PAGE", id });
+        // Auto-proceed drives forward navigation only. Left on past the
+        // last page, it would re-fire the moment any earlier (unlocked)
+        // page is revisited — its useAutoProceed effect runs again on
+        // mount and immediately advances again, which reads as pages
+        // turning by themselves when the user is just trying to look back.
+        // Reaching the end is the natural place to switch it back off.
+        if (pageIndex(id) === PAGES.length - 1) {
+          dispatch({ type: "SET_AUTO_PROCEED", value: false });
+        }
       },
 
       // ---- design gates (G1-G4) ----
-      setGroupSource: (source) => dispatch({ type: "SET_GROUP_SOURCE", source }),
+      setGroupSource: (source) => {
+        // Switching back to "inferred" should undo any manual toggles, not
+        // just relabel the current (possibly hand-edited) groups. The ID
+        // prefix *is* the inferred rule, so resetting is just re-deriving
+        // group from id rather than needing a separate stored "original".
+        if (source === "inferred") {
+          samples.forEach((s) => {
+            s.group = s.id[0];
+          });
+          dispatch({ type: "BUMP_GROUP_VERSION" });
+        }
+        dispatch({ type: "SET_GROUP_SOURCE", source });
+      },
       toggleSampleGroup: (id) => {
         const s = samples.find((x) => x.id === id);
         if (!s) return;
@@ -70,6 +91,19 @@ export function AppStateProvider({ children }) {
 
       // ---- progressive reveal ----
       reveal: (id) => dispatch({ type: "REVEAL", id }),
+
+      // ---- proceed with recommended options ----
+      setAutoProceed: (value) => {
+        dispatch({ type: "SET_AUTO_PROCEED", value });
+        if (value) {
+          addLog({
+            page: "upload",
+            human: true,
+            src: "human-in-the-loop",
+            text: "Reviewer switched on auto-proceed: every remaining gate accepts the recommended option automatically.",
+          });
+        }
+      },
     };
   }, []);
 

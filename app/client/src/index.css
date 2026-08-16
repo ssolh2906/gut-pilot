@@ -1073,6 +1073,35 @@ input[type="range"]::-moz-range-thumb {
   height: 20px;
 }
 
+/* ============================================================ STAT STRIP
+   The PERMANOVA result row on the Beta page (R², p, permutations, ...). */
+.pv-strip {
+  display: flex;
+  gap: 26px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-line);
+}
+.pv {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pv .l {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--color-ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.pv .v {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 17px;
+  font-weight: 700;
+}
+
 /* ============================================================ REVEAL
    The "run the next step" button pattern used to progressively disclose
    each page's content instead of showing it all at once. */
@@ -1254,7 +1283,8 @@ input[type="range"]::-moz-range-thumb {
 .cell {
   cursor: pointer;
 }
-.cell.hot {
+.cell.hot,
+.cell:hover {
   stroke: var(--color-ink-0);
   stroke-width: 1.6;
 }
@@ -1453,19 +1483,24 @@ input[type="range"]::-moz-range-thumb {
 .tl:last-child {
   padding-bottom: 0;
 }
-.tl::before {
-  content: "";
+.tl-icon {
   position: absolute;
-  left: -6.5px;
-  top: 17px;
-  width: 11px;
-  height: 11px;
+  left: -12px;
+  top: 10px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
-  background: var(--color-surface);
-  border: 2px solid var(--color-accent);
+  background: var(--color-accent);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 0 0 3px var(--color-surface);
 }
-.tl.human::before {
-  border-color: var(--color-good);
+.tl-icon svg {
+  width: 12px;
+  height: 12px;
+}
+.tl.human .tl-icon {
   background: var(--color-good);
 }
 .tl .st {
@@ -1491,6 +1526,73 @@ input[type="range"]::-moz-range-thumb {
 .tl .r2 .conf {
   font-size: 10px;
   padding: 2px 7px;
+}
+
+/* ============================================================ LOG RAIL
+   Always-visible collapsed section on the right edge — a thin strip of one
+   small icon per log entry — that opens the decision log drawer. Never
+   more than one click away, regardless of scroll or which page you're on.
+   A <div> with button semantics, not a <button>: it reads as a persistent
+   panel rather than a floating action control. */
+.log-rail {
+  position: fixed;
+  top: 108px;
+  right: 0;
+  z-index: 60;
+  width: 34px;
+  max-height: calc(100vh - 128px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0 14px;
+  background: var(--color-surface);
+  color: var(--color-ink-2);
+  border: 1px solid var(--color-line-2);
+  border-right: none;
+  border-radius: 10px 0 0 10px;
+  box-shadow: var(--shadow-2);
+  cursor: pointer;
+  transition: background 0.13s, color 0.13s;
+}
+.log-rail:hover,
+.log-rail:focus-visible {
+  background: var(--color-surface-3);
+  color: var(--color-ink-0);
+}
+.log-rail:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+.log-rail > svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+.log-rail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  overflow-y: auto;
+  padding: 1px;
+  scrollbar-width: thin;
+}
+.log-rail-dot {
+  width: 19px;
+  height: 19px;
+  flex: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--color-accent);
+  color: #fff;
+}
+.log-rail-dot.human {
+  background: var(--color-good);
+}
+.log-rail-dot svg {
+  width: 10px;
+  height: 10px;
 }
 
 /* ============================================================ DRAWER */

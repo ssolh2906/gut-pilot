@@ -8,7 +8,7 @@ import BetaPage from "./pages/BetaPage";
 import DaPage from "./pages/DaPage";
 import RefsPage from "./pages/RefsPage";
 import Tooltip from "./components/Tooltip";
-import DecisionLogDrawer from "./components/DecisionLog";
+import DecisionLogDrawer, { DecisionLogRail } from "./components/DecisionLog";
 import FloatingChat from "./components/FloatingChat";
 import { AppStateProvider, useAppState } from "./state/AppStateContext";
 import { PAGES } from "./lib/pages";
@@ -21,11 +21,6 @@ const BrandMark = () => (
     <circle cx="17.6" cy="8.4" r="2" fill="#fff" fillOpacity=".82" />
     <circle cx="16.8" cy="17.6" r="2" fill="#fff" fillOpacity=".66" />
     <path d="M8.6 10L17.6 8.4M8.6 10l8.2 7.6M17.6 8.4l-.8 9.2" stroke="#fff" strokeOpacity=".6" strokeWidth="1.1" />
-  </svg>
-);
-const LogIcon = () => (
-  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7">
-    <path d="M4 5h12M4 10h12M4 15h8" strokeLinecap="round" />
   </svg>
 );
 const ThemeIcon = () => (
@@ -114,10 +109,6 @@ function AppShell() {
               <i />
               Baxter CRC 16S <span className="font-mono">· {samples.length} samples</span>
             </div>
-            <button type="button" className="icon-btn" aria-haspopup="dialog" onClick={() => setDrawerOpen(true)}>
-              <LogIcon />
-              Decision log <span className="badge font-mono">{state.log.length}</span>
-            </button>
             <button type="button" className="icon-btn" aria-label="Toggle colour theme" title="Toggle light and dark" onClick={toggleTheme}>
               <ThemeIcon />
             </button>
@@ -137,6 +128,7 @@ function AppShell() {
         {state.currentPage === "refs" && <RefsPage />}
       </div>
 
+      <DecisionLogRail log={state.log} onClick={() => setDrawerOpen(true)} />
       <DecisionLogDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} log={state.log} />
       <FloatingChat />
     </div>

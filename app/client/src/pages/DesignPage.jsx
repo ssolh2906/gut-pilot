@@ -11,6 +11,7 @@
 // warns; here the option is disabled outright with the reason inline.
 import { useMemo } from "react";
 import { useAppState } from "../state/AppStateContext";
+import { useAutoProceed } from "../hooks/useAutoProceed";
 import { OptRow, Opt, GateNote } from "../components/Gate";
 import { samples, groupName, fmt, groupColor, batchTable, RANKS, CATS, taxonAt, featureCount } from "../lib/data";
 
@@ -59,6 +60,8 @@ export default function DesignPage() {
     });
     actions.advanceTo("qc");
   }
+
+  useAutoProceed(true, confirm);
 
   return (
     <section className="flex flex-col gap-5">
