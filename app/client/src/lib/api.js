@@ -15,9 +15,28 @@ async function request(path, options) {
   return res.json();
 }
 
-// Cheap — just loads the fixture dataset, no model call.
-export function createSession() {
-  return request("/session", { method: "POST" });
+// Cheap — real ingestion, no model call either way.
+//
+// `file`, if given, is a real .tar.gz upload (MicrobiomeHD format — same
+// shape as the bundled datasets) sent as multipart/form-data and parsed for
+// real server-side. Without a file, falls back to `dataset` — the bundled
+// "crc_baxter" (default) or the synthetic "fixture" for fast dev iteration.
+// A file upload can't go through the shared `request()` helper: that
+// forces a "Content-Type: application/json" header, which would break a
+// multipart body — the browser needs to set its own boundary header.
+export async function createSession(file, dataset) {
+  if (file) {
+    const form = new FormData();
+    form.append("count_table", file);
+    const res = await fetch(`${BASE}/session`, { method: "POST", body: form });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `${res.status} ${res.statusText}`);
+    }
+    return res.json();
+  }
+  const qs = dataset ? `?dataset=${encodeURIComponent(dataset)}` : "";
+  return request(`/session${qs}`, { method: "POST" });
 }
 
 // Not cheap — a live Claude + Paperclip call (tens of seconds, real tokens).
@@ -30,5 +49,33 @@ export function setNormalizeStrategy(sessionId, strategy) {
   return request(`/session/${sessionId}/normalize/strategy`, {
     method: "POST",
     body: JSON.stringify({ strategy }),
+  });
+}
+
+// Not cheap — same live Claude + Paperclip cost pattern as normalize/strategy.
+// Combined G1+G2+G3 in one call (see reasoning/study_design.py).
+export function getStudyDesign(sessionId) {
+  return request(`/session/${sessionId}/design/study-design`);
+}
+
+// Not cheap — same live Claude + Paperclip cost pattern as normalize/strategy.
+export function getRank(sessionId) {
+  return request(`/session/${sessionId}/design/rank`);
+}
+
+export function setRank(sessionId, rank) {
+  return request(`/session/${sessionId}/design/rank`, {
+    method: "POST",
+    body: JSON.stringify({ rank }),
+  });
+}
+
+// Not cheap — every message is a live Claude call (Paperclip tools available
+// but only used when the question calls for it). Only call from an explicit
+// send action, never automatically.
+export function sendChatMessage(sessionId, message, page) {
+  return request(`/session/${sessionId}/chat`, {
+    method: "POST",
+    body: JSON.stringify({ message, page }),
   });
 }

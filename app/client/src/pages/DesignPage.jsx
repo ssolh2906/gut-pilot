@@ -9,59 +9,188 @@
 // must be blocked, not just warned about, because this dataset has no
 // subject_id column to support it. The mock lets you click it and only
 // warns; here the option is disabled outright with the reason inline.
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppState } from "../state/AppStateContext";
 import { useAutoProceed } from "../hooks/useAutoProceed";
-import { OptRow, Opt, GateNote } from "../components/Gate";
-import { samples, groupName, fmt, groupColor, batchTable, RANKS, CATS, taxonAt, featureCount } from "../lib/data";
+import { getRank, setRank as postRank, getStudyDesign } from "../lib/api";
+import { OptRow, Opt, GateNote, ConfBadge } from "../components/Gate";
+import Spinner from "../components/Spinner";
+import { samples, groupName, fmt, groupColor } from "../lib/data";
+
+const RANK_LABEL = { phylum: "Phylum", family: "Family", genus: "Genus" };
+const G2_LABEL = { covariate: "Include batch as a covariate", stratify: "Stratify permutations by batch", none: "Proceed and record the risk" };
 
 export default function DesignPage() {
   const { state, actions } = useAppState();
-  const { design, rank } = state;
+  const { design } = state;
+  const sd = state.studyDesignGate;
+  const g4 = state.g4Gate;
 
   // samples is a mutated singleton (toggleSampleGroup edits it in place),
   // so groupVersion is what actually needs to trigger recomputation here.
+  // Only used for the manual/none sample-chip grid below — G1's actual
+  // recommendation and group counts come from real metadata (sd.g1) once
+  // revealed; wiring the chip grid itself to real per-sample group labels
+  // is a further, separate step not built this pass.
   const counts = useMemo(() => {
     const h = samples.filter((s) => s.group === "H").length;
     return { h, c: samples.length - h };
   }, [state.groupVersion]);
 
-  function confirm() {
+  // ---- G1+G2+G3 (study design) — one combined live Claude + Paperclip
+  // call (reasoning/study_design.py). Runs automatically once a session
+  // exists (see the effect below) — unlike G6/Normalize, this page's
+  // recommendations aren't Reveal-gated; only the eventual choice waits
+  // on the human.
+  const [sdLoading, setSdLoading] = useState(false);
+  const [sdError, setSdError] = useState(null);
+  const [groupSource, setGroupSource] = useState(design.groupSource);
+  const [batchHandling, setBatchHandling] = useState(design.batchHandling);
+  const [pairing, setPairing] = useState(design.pairing);
+
+  async function fetchStudyDesign() {
+    if (!state.sessionId) {
+      setSdError("No active session yet — go back to Upload first so the backend has a dataset loaded.");
+      return;
+    }
+    setSdLoading(true);
+    setSdError(null);
+    try {
+      const data = await getStudyDesign(state.sessionId);
+      actions.setStudyDesignGate(data);
+      setGroupSource("inferred"); // "inferred" = the recommended/metadata-based option (see Opt below)
+      setBatchHandling(data.g2.recommendation.option_id);
+      setPairing(data.g3.recommendation.option_id);
+    } catch (e) {
+      setSdError(e.message);
+    } finally {
+      setSdLoading(false);
+    }
+  }
+
+  // ---- G4 (taxonomic rank) — its own separate live Claude + Paperclip
+  // call, independent decision from G1-G3 above.
+  const [g4Loading, setG4Loading] = useState(false);
+  const [g4Error, setG4Error] = useState(null);
+  const [selectedRank, setSelectedRank] = useState(g4?.rank ?? null);
+  const [confirming, setConfirming] = useState(false);
+
+  async function fetchG4() {
+    if (!state.sessionId) {
+      setG4Error("No active session yet — go back to Upload first so the backend has a dataset loaded.");
+      return;
+    }
+    setG4Loading(true);
+    setG4Error(null);
+    try {
+      const data = await getRank(state.sessionId);
+      actions.setG4Gate(data);
+      setSelectedRank(data.rank);
+    } catch (e) {
+      setG4Error(e.message);
+    } finally {
+      setG4Loading(false);
+    }
+  }
+
+  // Both recommendations run automatically on arrival — only the eventual
+  // CHOICE waits for the human, not the AI's read of the data. Refs (not
+  // state) guard each fetch to exactly once per mount: StrictMode's dev-only
+  // double-effect-invocation would otherwise fire two live, billed Claude
+  // calls back to back on every page load.
+  const sdFetchedRef = useRef(false);
+  useEffect(() => {
+    if (sdFetchedRef.current || sd || !state.sessionId) return;
+    sdFetchedRef.current = true;
+    fetchStudyDesign();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.sessionId]);
+
+  const g4FetchedRef = useRef(false);
+  useEffect(() => {
+    if (g4FetchedRef.current || g4 || !state.sessionId) return;
+    g4FetchedRef.current = true;
+    fetchG4();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.sessionId]);
+
+  async function confirm() {
+    setConfirming(true);
+    // Only hits the backend (a second real Claude call) if the user actually
+    // picked a different rank than the session's current one — never an
+    // automatic/auto-proceed-triggered call.
+    if (g4 && selectedRank && selectedRank !== g4.rank && state.sessionId) {
+      try {
+        const data = await postRank(state.sessionId, selectedRank);
+        actions.setG4Gate(data);
+        actions.setG6Gate(null); // G4 invalidates G6 (docs/gates.md's invalidation table) — clear the stale cache
+      } catch (e) {
+        setG4Error(e.message);
+        setConfirming(false);
+        return;
+      }
+    }
+    setConfirming(false);
+
+    // Sync the reducer's `design` so other pages (Alpha/Beta read
+    // design.singleCohort) see the actual confirmed choice, whether or not
+    // G1-G3 were ever revealed.
+    actions.setGroupSource(groupSource);
+    actions.setBatchHandling(batchHandling);
+    actions.setPairing(pairing);
+
+    const finalRank = g4 && selectedRank ? selectedRank : "genus";
+    const finalFeatureCount = g4?.ranks?.find((r) => r.option_id === finalRank)?.feature_count;
+    const singleCohort = groupSource === "none";
+
     actions.confirmDesign();
     actions.addLog({
       key: "g1",
       page: "design",
       human: true,
       src: "human-in-the-loop",
-      text: design.singleCohort
+      text: singleCohort
         ? "Confirmed single-cohort mode. No grouping variable, so all group comparisons are disabled for this run."
-        : `Confirmed the grouping (${design.groupSource === "inferred" ? "inferred from sample ID prefix" : "assigned manually"}): Healthy ${counts.h} against CRC ${counts.c}.`,
+        : sd
+          ? `Confirmed the grouping (${sd.g1.selected_column}, from metadata): ${Object.entries(sd.g1.group_counts).map(([k, v]) => `${k} ${v}`).join(", ")}.` +
+            (sd.g1.excluded_levels?.length ? ` Excluded from the comparison: ${sd.g1.excluded_levels.join(", ")}.` : "")
+          : `Confirmed the grouping (${groupSource === "inferred" ? "inferred from sample ID prefix" : "assigned manually"}): Healthy ${counts.h} against CRC ${counts.c}.`,
     });
     actions.addLog({
       key: "g2",
       page: "design",
       human: true,
       src: "human-in-the-loop",
-      text: `Batch handling set to ${{ none: "proceed and record the confounding risk", covariate: "include batch as a covariate", stratify: "stratify permutations by batch" }[design.batchHandling]}.`,
+      text: sd
+        ? `Batch handling: ${sd.g2.status.replace(/_/g, " ").toLowerCase()} — ${G2_LABEL[batchHandling]}.`
+        : `Batch handling set to ${G2_LABEL[batchHandling]}.`,
     });
     actions.addLog({
       key: "g3",
       page: "design",
       human: true,
       src: "human-in-the-loop",
-      text: `Samples declared ${design.pairing === "paired" ? "paired or repeated measures, so tests use Wilcoxon signed-rank" : "independent, so tests use Wilcoxon rank-sum"}.`,
+      text: sd
+        ? `Samples declared ${pairing === "paired" ? "paired/clustered" : "independent"} (${sd.g3.n_subjects} subjects, ${sd.g3.n_samples} samples).`
+        : `Samples declared ${pairing === "paired" ? "paired or repeated measures, so tests use Wilcoxon signed-rank" : "independent, so tests use Wilcoxon rank-sum"}.`,
     });
     actions.addLog({
       key: "g4",
       page: "design",
       human: true,
       src: "human-in-the-loop",
-      text: `Analysis rank set to ${RANKS[rank].label}, ${fmt(featureCount(rank))} features.`,
+      text: finalFeatureCount
+        ? `Analysis rank set to ${RANK_LABEL[finalRank]}, ${fmt(finalFeatureCount)} features.`
+        : `Analysis rank set to ${RANK_LABEL[finalRank]}.`,
     });
     actions.advanceTo("qc");
   }
 
-  useAutoProceed(true, confirm);
+  // Ready regardless of whether G4 was ever revealed — auto-proceed must
+  // never trigger a live paid call on its own; it only ever uses whatever
+  // rank data (or lack of it) is already there, same as a manual confirm
+  // click would if G4 was never opened.
+  const autoPending = useAutoProceed(true, confirm);
 
   return (
     <section className="flex flex-col gap-5">
@@ -72,114 +201,147 @@ export default function DesignPage() {
         </div>
       </div>
 
-      {/* G1 */}
-      <div className="block gate">
-        <div className="block-head">
-          <div>
-            <h2>Group definition</h2>
-            <p className="sub">No metadata file was supplied, so the grouping below is inferred from the sample ID pattern. Check it before continuing.</p>
+      {(sdLoading || (!sd && !sdError)) && (
+        <div className="block appear">
+          <div className="block-body pad-t text-sm text-ink-2 flex items-center gap-2.5">
+            <Spinner />
+            Reviewer is checking the real metadata for a grouping variable, testing for batch confounding, and verifying sample independence — this takes a little while.
           </div>
         </div>
-        <div className="block-body">
-          <OptRow>
-            <Opt pressed={design.groupSource === "inferred"} onClick={() => actions.setGroupSource("inferred")} title="Use the inferred grouping">
-              Prefix H maps to Healthy and C maps to CRC
-            </Opt>
-            <Opt pressed={design.groupSource === "manual"} onClick={() => actions.setGroupSource("manual")} title="Assign groups manually">
-              Edit the assignment sample by sample
-            </Opt>
-            <Opt pressed={design.groupSource === "none"} onClick={() => actions.setGroupSource("none")} title="No grouping, single cohort">
-              Descriptive panels only, all group comparisons disabled
-            </Opt>
-          </OptRow>
+      )}
 
-          {design.groupSource !== "none" && (
-            <div className="assign">
-              {samples.map((s) => (
-                <span
-                  key={s.id}
-                  className={"sid" + (design.groupSource === "manual" ? " editable" : "")}
-                  onClick={design.groupSource === "manual" ? () => actions.toggleSampleGroup(s.id) : undefined}
-                  data-tip={`${s.id}|group=${groupName(s.group)}|reads=${fmt(s.depth)}${design.groupSource === "manual" ? "|Click to switch group" : ""}`}
-                >
-                  <i style={{ background: groupColor(s.group) }} />
-                  {s.id}
-                </span>
-              ))}
+      {sdError && (
+        <div className="gate-note warn flex items-center gap-2.5">
+          <span>{sdError}</span>
+          <button type="button" className="btn btn-sm" onClick={fetchStudyDesign}>
+            Retry
+          </button>
+        </div>
+      )}
+
+      {sd && (
+        <>
+          {/* G1 */}
+          <div className="block gate">
+            <div className="block-head">
+              <div>
+                <h2>Group definition</h2>
+                <p className="sub">Metadata column <span className="font-mono">{sd.g1.selected_column}</span> identified as the comparison variable. Check it before continuing.</p>
+              </div>
+              <ConfBadge>{sd.g1.recommendation.label}</ConfBadge>
             </div>
-          )}
+            <div className="block-body">
+              <OptRow>
+                <Opt pressed={groupSource === "inferred"} recommended={sd.g1.recommendation.option_id === "metadata"} onClick={() => setGroupSource("inferred")} title="Use the metadata grouping">
+                  {sd.g1.selected_column}: {Object.entries(sd.g1.group_counts).map(([k, v]) => `${k} ${v}`).join(", ")}
+                </Opt>
+                <Opt pressed={groupSource === "manual"} onClick={() => setGroupSource("manual")} title="Assign groups manually">
+                  Edit the assignment sample by sample
+                </Opt>
+                <Opt pressed={groupSource === "none"} onClick={() => setGroupSource("none")} title="No grouping, single cohort">
+                  Descriptive panels only, all group comparisons disabled
+                </Opt>
+              </OptRow>
 
-          <GateNote
-            variant={design.groupSource === "none" ? "warn" : undefined}
-            html={
-              design.groupSource === "none"
-                ? "<b>Single-cohort mode.</b> Every group comparison is switched off: alpha diversity group tests, PERMANOVA, and differential abundance. The descriptive panels still run, so you keep depth, composition, per-sample alpha and the distance matrix. This is a supported mode, not a degraded one, but it does mean this run cannot answer a Healthy against CRC question."
-                : design.groupSource === "inferred"
-                  ? `Inferred two groups from the ID prefix: <b>Healthy ${counts.h}</b> and <b>CRC ${counts.c}</b>. I am reading <span class="mono">H-</span> and <span class="mono">C-</span> as the group marker because every one of the ${samples.length} IDs matches that pattern and the split is balanced. That is a guess from a naming convention, not metadata, so confirm it before I use it as the comparison.`
-                  : `Manual assignment. Click any sample to move it between groups. Current split: <b>Healthy ${counts.h}</b> and <b>CRC ${counts.c}</b>.`
-            }
-          />
-        </div>
-      </div>
+              {groupSource === "manual" && (
+                <div className="assign">
+                  {samples.map((s) => (
+                    <span
+                      key={s.id}
+                      className="sid editable"
+                      onClick={() => actions.toggleSampleGroup(s.id)}
+                      data-tip={`${s.id}|group=${groupName(s.group)}|reads=${fmt(s.depth)}|Click to switch group`}
+                    >
+                      <i style={{ background: groupColor(s.group) }} />
+                      {s.id}
+                    </span>
+                  ))}
+                </div>
+              )}
 
-      {/* G2 */}
-      <div className="block gate">
-        <div className="block-head">
-          <div>
-            <h2>Batch effects</h2>
-            <p className="sub">
-              A <span className="font-mono">batch</span> column was found. Batch that tracks group membership is the most common way a disease signal turns out to be a processing signal.
-            </p>
+              <GateNote
+                variant={groupSource === "none" ? "warn" : undefined}
+                html={
+                  groupSource === "none"
+                    ? "<b>Single-cohort mode.</b> Every group comparison is switched off: alpha diversity group tests, PERMANOVA, and differential abundance. The descriptive panels still run, so you keep depth, composition, per-sample alpha and the distance matrix. This is a supported mode, not a degraded one, but it does mean this run cannot answer a Healthy against CRC question."
+                    : groupSource === "manual"
+                      ? `Manual assignment. Click any sample to move it between groups. Current split: <b>Healthy ${counts.h}</b> and <b>CRC ${counts.c}</b>.`
+                      : sd.g1.note_message
+                }
+              />
+            </div>
           </div>
-        </div>
-        <div className="block-body">
-          <BatchTable groupVersion={state.groupVersion} />
-          <GateNote
-            variant={design.singleCohort ? undefined : batchSkewWarns() ? "warn" : "good"}
-            html={
-              design.singleCohort
-                ? "No grouping is defined, so there is nothing for batch to confound. This gate is inactive."
-                : batchSkewWarns()
-                  ? `<b>Batch is not balanced across groups.</b> ${Math.round(batchSkew() * 100)}% of CRC samples sit in a single batch. If the batches were processed at different times or with different kits, a significant PERMANOVA result cannot be separated from a processing effect. I cannot tell these apart from the count table alone, which is why this is your call rather than mine.`
-                  : "Batch is reasonably balanced across groups, so confounding is unlikely to drive the group comparison."
-            }
-          />
-          <OptRow>
-            <Opt pressed={design.batchHandling === "covariate"} onClick={() => actions.setBatchHandling("covariate")} title="Include batch as a covariate">
-              PERMANOVA models batch alongside group
-            </Opt>
-            <Opt pressed={design.batchHandling === "stratify"} onClick={() => actions.setBatchHandling("stratify")} title="Stratify permutations by batch">
-              Permutes within batch only
-            </Opt>
-            <Opt pressed={design.batchHandling === "none"} onClick={() => actions.setBatchHandling("none")} title="Proceed and record the risk">
-              Results carry a confounding caveat
-            </Opt>
-          </OptRow>
-        </div>
-      </div>
 
-      {/* G3 */}
-      <div className="block gate">
-        <div className="block-head">
-          <div>
-            <h2>Sample independence</h2>
-            <p className="sub">This decides the test family. Getting it wrong invalidates every p-value on the run, so it is confirmed even when the check is clean.</p>
+          {/* G2 */}
+          <div className="block gate">
+            <div className="block-head">
+              <div>
+                <h2>Batch effects</h2>
+                <p className="sub">
+                  {sd.g2.status === "NO_BATCH_VARIABLE_FOUND"
+                    ? "No usable technical/batch column was found in the real metadata."
+                    : "Batch that tracks group membership is the most common way a disease signal turns out to be a processing signal."}
+                </p>
+              </div>
+              <ConfBadge>{sd.g2.recommendation.label}</ConfBadge>
+            </div>
+            <div className="block-body">
+              <GateNote
+                variant={sd.g2.status === "CLEAN" || sd.g2.status === "NO_BATCH_VARIABLE_FOUND" ? "good" : "warn"}
+                html={
+                  sd.g2.note_message +
+                  (sd.g2.citation?.quote
+                    ? ` <span class="mono">(${sd.g2.citation.ref_key}, ${sd.g2.citation.line_ref})</span>: "${sd.g2.citation.quote}"`
+                    : "")
+                }
+              />
+              <OptRow>
+                <Opt pressed={batchHandling === "covariate"} recommended={sd.g2.recommendation.option_id === "covariate"} onClick={() => setBatchHandling("covariate")} title="Include batch as a covariate">
+                  PERMANOVA models batch alongside group
+                </Opt>
+                <Opt pressed={batchHandling === "stratify"} recommended={sd.g2.recommendation.option_id === "stratify"} onClick={() => setBatchHandling("stratify")} title="Stratify permutations by batch">
+                  Permutes within batch only
+                </Opt>
+                <Opt pressed={batchHandling === "none"} recommended={sd.g2.recommendation.option_id === "none"} onClick={() => setBatchHandling("none")} title="Proceed and record the risk">
+                  Results carry a confounding caveat
+                </Opt>
+              </OptRow>
+            </div>
           </div>
-        </div>
-        <div className="block-body">
-          <GateNote
-            html={`I checked for repeated subject identifiers and found none: ${samples.length} IDs, ${samples.length} distinct subjects, no timepoint column. That points to independent samples, so I propose Wilcoxon rank-sum with unrestricted permutations.`}
-          />
-          <OptRow>
-            <Opt pressed={design.pairing === "independent"} onClick={() => actions.setPairing("independent")} title="Independent samples">
-              Wilcoxon rank-sum, unrestricted permutations
-            </Opt>
-            <Opt disabled title="Paired or repeated measures">
-              No subject_id column was supplied, so paired tests cannot be executed
-            </Opt>
-          </OptRow>
-        </div>
-      </div>
+
+          {/* G3 */}
+          <div className="block gate">
+            <div className="block-head">
+              <div>
+                <h2>Sample independence</h2>
+                <p className="sub">This decides the test family. Getting it wrong invalidates every p-value on the run, so it is confirmed even when the check is clean.</p>
+              </div>
+              <ConfBadge>{sd.g3.recommendation.label}</ConfBadge>
+            </div>
+            <div className="block-body">
+              <GateNote html={sd.g3.note_message} />
+              <OptRow>
+                <Opt pressed={pairing === "independent"} recommended={sd.g3.recommendation.option_id === "independent"} onClick={() => setPairing("independent")} title="Independent samples">
+                  Wilcoxon rank-sum, unrestricted permutations
+                </Opt>
+                <Opt
+                  pressed={pairing === "paired"}
+                  recommended={sd.g3.recommendation.option_id === "paired"}
+                  disabled={sd.g3.recommendation.option_id !== "paired"}
+                  onClick={() => setPairing("paired")}
+                  title="Paired or repeated measures"
+                >
+                  {sd.g3.recommendation.option_id === "paired"
+                    ? "Wilcoxon signed-rank, subject-restricted permutations"
+                    : sd.g3.subject_id_variable
+                      ? `${sd.g3.subject_id_variable} shows no repeated subjects, so paired tests cannot be executed`
+                      : "No subject identifier column was found, so paired tests cannot be executed"}
+                </Opt>
+              </OptRow>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* G4 */}
       <div className="block gate">
@@ -188,95 +350,72 @@ export default function DesignPage() {
             <h2>Taxonomic rank</h2>
             <p className="sub">Higher ranks merge taxa. That buys statistical power and loses resolution, and the trade is worth seeing rather than reading about.</p>
           </div>
+          {g4 && <ConfBadge>{g4.recommendation.label}</ConfBadge>}
         </div>
-        <div className="block-body">
-          <OptRow>
-            {Object.entries(RANKS).map(([key, r]) => (
-              <Opt key={key} pressed={rank === key} onClick={() => actions.setRank(key)} title={r.label}>
-                <span className="num">{fmt(r.n)} features</span>
-              </Opt>
-            ))}
-          </OptRow>
-          <GateNote variant={rank === "phylum" ? "warn" : undefined} html={rankNoteHtml(rank)} />
+        <div className="block-body flex flex-col gap-3">
+          {(g4Loading || (!g4 && !g4Error)) && (
+            <p className="text-sm text-ink-2 flex items-center gap-2.5">
+              <Spinner />
+              Reviewer is weighing the rank trade-off against this dataset's real feature counts and verifying its citation live — this takes a little while.
+            </p>
+          )}
+
+          {g4Error && (
+            <div className="gate-note warn flex items-center gap-2.5">
+              <span>{g4Error}</span>
+              <button type="button" className="btn btn-sm" onClick={fetchG4}>
+                Retry
+              </button>
+            </div>
+          )}
+
+          {g4 && (
+            <>
+              <OptRow>
+                {g4.ranks.map((r) => (
+                  <Opt
+                    key={r.option_id}
+                    pressed={selectedRank === r.option_id}
+                    recommended={r.option_id === g4.recommendation.option_id}
+                    disabled={!r.available}
+                    onClick={() => setSelectedRank(r.option_id)}
+                    title={r.label}
+                  >
+                    <span className="num">{fmt(r.feature_count)} features</span>
+                  </Opt>
+                ))}
+              </OptRow>
+              <GateNote variant={g4.warning ? "warn" : undefined} html={rankNoteHtml(g4)} />
+            </>
+          )}
         </div>
       </div>
 
       <div className="page-foot">
-        <p className="hint">
-          {design.singleCohort
-            ? "Continuing in single-cohort mode. Group comparisons stay disabled for the rest of the run."
-            : "Confirming records these four choices in the decision log. You can come back and change them."}
+        <p className="hint flex items-center gap-2">
+          {autoPending && <Spinner />}
+          {autoPending
+            ? "Reviewer confirming the recommended design…"
+            : groupSource === "none"
+              ? "Continuing in single-cohort mode. Group comparisons stay disabled for the rest of the run."
+              : "Confirming records these four choices in the decision log. You can come back and change them."}
         </p>
-        <button type="button" className="btn btn-primary btn-lg" onClick={confirm}>
-          Confirm design and continue
+        <button type="button" className="btn btn-primary btn-lg" disabled={confirming} onClick={confirm}>
+          {confirming ? "Confirming…" : "Confirm design and continue"}
         </button>
       </div>
     </section>
   );
 }
 
-function batchSkew() {
-  const t = batchTable();
-  const cC = t.B1.C + t.B2.C;
-  return cC ? Math.max(t.B1.C, t.B2.C) / cC : 0;
-}
-function batchSkewWarns() {
-  return batchSkew() > 0.7;
-}
-
-function BatchTable() {
-  const t = batchTable();
-  const cH = t.B1.H + t.B2.H;
-  const cC = t.B1.C + t.B2.C;
-  const total = cH + cC;
-  return (
-    <table className="xtab">
-      <thead>
-        <tr>
-          <th>Batch</th>
-          <th>Healthy</th>
-          <th>CRC</th>
-          <th>Total</th>
-        </tr>
-      </thead>
-      <tbody>
-        {["B1", "B2"].map((b) => {
-          const row = t[b];
-          const tot = row.H + row.C;
-          const lop = tot > 0 && (row.H === 0 || row.C === 0 || Math.max(row.H, row.C) / tot > 0.75);
-          return (
-            <tr key={b}>
-              <td>
-                <b>{b}</b>
-              </td>
-              <td className={lop ? "hot" : ""}>{row.H}</td>
-              <td className={lop ? "hot" : ""}>{row.C}</td>
-              <td>{tot}</td>
-            </tr>
-          );
-        })}
-        <tr>
-          <td>
-            <b>Total</b>
-          </td>
-          <td>{cH}</td>
-          <td>{cC}</td>
-          <td>{total}</td>
-        </tr>
-      </tbody>
-    </table>
-  );
-}
-
-function rankNoteHtml(rank) {
-  const merged = rank === "genus" ? 0 : CATS.length - new Set(CATS.map((c) => taxonAt(rank, c.name))).size;
-  const base = `Analysing at <b>${RANKS[rank].label}</b>, ${fmt(featureCount(rank))} features. `;
-  if (rank === "genus") {
-    return base + "Genus is the finest rank this table supports reliably and it is where the CRC literature reports its markers, so it is what I recommend.";
-  }
-  const tail =
-    rank === "phylum"
-      ? ", which collapses most of the panel into Firmicutes and Bacteroidetes. You gain power from fewer tests and lose the ability to name a marker, and the CRC signal in this cohort is genus-level."
-      : ". Family keeps some resolution while cutting the multiple-testing burden roughly in half.";
-  return base + `${merged} of the top composition categories merge at this rank${tail}`;
+// g4 is the real backend response (build_g4_response's shape) - rationale
+// and citation come from Claude's live reasoning, not hardcoded copy.
+function rankNoteHtml(g4) {
+  const current = g4.ranks.find((r) => r.option_id === g4.rank);
+  const base = `Analysing at <b>${current?.label ?? g4.rank}</b>${current ? `, ${fmt(current.feature_count)} features` : ""}. `;
+  const citation = g4.recommendation.citations?.[0];
+  const quoteHtml = citation?.quote
+    ? ` <span class="mono">(${citation.ref_key}, ${citation.line_ref})</span>: "${citation.quote}"`
+    : "";
+  return base + g4.recommendation.rationale + quoteHtml;
 }

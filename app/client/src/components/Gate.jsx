@@ -15,9 +15,15 @@ export function OptRow({ children, columns }) {
   );
 }
 
-export function Opt({ pressed, disabled, onClick, title, children }) {
+// `recommended` marks the option the reviewer's Reasoning layer picked
+// (gate.recommendation.option_id from the backend) with a distinct outline,
+// independent of `pressed` (the user's current selection) - the two can
+// differ, e.g. right after a gate loads before the user has changed anything
+// they're the same option, but they diverge the moment the user picks something else.
+export function Opt({ pressed, recommended, disabled, onClick, title, children }) {
+  const cls = "opt" + (recommended ? " opt-recommended" : "");
   return (
-    <button type="button" className="opt" aria-pressed={String(!!pressed)} disabled={disabled} onClick={onClick}>
+    <button type="button" className={cls} aria-pressed={String(!!pressed)} disabled={disabled} onClick={onClick}>
       <b>{title}</b>
       <span>{children}</span>
     </button>

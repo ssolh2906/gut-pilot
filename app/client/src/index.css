@@ -344,18 +344,34 @@ svg text {
   font-weight: 700;
 }
 
-.bar-track {
-  height: 5px;
-  border-radius: 999px;
-  background: var(--color-surface-3);
-  overflow: hidden;
-  width: 230px;
+/* ============================================================ SPINNER
+   Indeterminate circular loading indicator — no percentage, just motion,
+   for stages that take a moment (upload parsing, auto-proceed's pause
+   between gates). */
+.spinner {
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  flex: none;
+  border: 2px solid var(--color-line-2);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
 }
-.bar-fill {
-  height: 100%;
-  background: var(--color-accent);
-  border-radius: 999px;
-  transition: width 0.16s linear;
+.spinner-lg {
+  width: 30px;
+  height: 30px;
+  border-width: 3px;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.2s;
+  }
 }
 
 .label {
@@ -667,6 +683,10 @@ input[type="range"]::-moz-range-thumb {
 .opt:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+.opt-recommended {
+  outline: 2px solid var(--color-warn);
+  outline-offset: 1px;
 }
 .opt b {
   display: block;

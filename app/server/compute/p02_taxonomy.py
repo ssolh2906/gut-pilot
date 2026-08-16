@@ -34,3 +34,18 @@ def aggregate_by_rank(df: pd.DataFrame, rank: str) -> pd.DataFrame:
     """
     labels = [parse_lineage(t).get(rank, "Unclassified") for t in df.index]
     return df.groupby(labels).sum()
+
+
+def compute_feature_counts(taxonomy_map: dict) -> dict:
+    """Distinct named-feature count at each rank, for G4's option list and
+    study_design.feature_counts. "Unclassified" is not counted as a feature.
+
+    Input: {feature_id: {"phylum":..., ..., "genus":...}} (e.g. from
+    ingestion.load_dataset's taxonomy_map)
+    Output: {"phylum": n, "class": n, "order": n, "family": n, "genus": n}
+    """
+    counts = {}
+    for rank in _RANK_PREFIXES:
+        labels = {ranks[rank] for ranks in taxonomy_map.values() if rank in ranks}
+        counts[rank] = len(labels)
+    return counts

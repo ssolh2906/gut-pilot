@@ -34,6 +34,10 @@ export const initialState = {
 
   // ---- backend wiring ----
   sessionId: null, // set once the backend has loaded a dataset (see UploadPage)
+  studyDesignGate: null, // cached GET .../design/study-design response (G1+G2+G3
+  // combined) — same caching rationale as g4Gate/g6Gate below.
+  g4Gate: null, // cached GET/POST .../design/rank response — same caching
+  // rationale as g6Gate below (live Claude + Paperclip call).
   g6Gate: null, // cached GET/POST .../normalize/strategy response. This is a
   // live Claude + Paperclip call, so it's fetched once on demand (see
   // NormalizationPage) and cached here rather than re-fetched on every mount.
@@ -98,6 +102,10 @@ export function reducer(state, action) {
 
     case "SET_SESSION_ID":
       return { ...state, sessionId: action.id };
+    case "SET_STUDY_DESIGN_GATE":
+      return { ...state, studyDesignGate: action.data };
+    case "SET_G4_GATE":
+      return { ...state, g4Gate: action.data };
     case "SET_G6_GATE":
       return { ...state, g6Gate: action.data };
 
