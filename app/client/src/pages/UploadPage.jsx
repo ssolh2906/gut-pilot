@@ -147,6 +147,16 @@ export default function UploadPage() {
           >
             Browse files
           </button>
+          <button
+            type="button"
+            className="btn btn-sm mt-1"
+            onClick={(e) => {
+              e.stopPropagation();
+              runUpload(null);
+            }}
+          >
+            Use bundled crc_baxter dataset
+          </button>
           <input
             ref={inputRef}
             type="file"

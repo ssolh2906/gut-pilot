@@ -15,9 +15,14 @@ from pydantic import BaseModel
 
 from compute.fixtures import make_fixture_count_table
 from compute.ingestion import load_dataset, load_uploaded_dataset
+from compute.p02_design import classify_metadata_columns
 from compute.p02_taxonomy import aggregate_by_rank
 from compute.p03_qc_checks import depth_summary, flag_below_floor
-from compute.p04_rarefaction import build_rarefaction_curve, samples_above_depth
+from compute.p04_rarefaction import (
+    expected_richness_curve,
+    samples_above_depth,
+    suggest_plateau_depth,
+)
 from compute.p05_alpha_diversity import alpha_group_test, compute_alpha_diversity
 from compute.p06_beta_diversity import (
     aitchison_matrix,
@@ -114,6 +119,27 @@ def _prefix_groups(sample_ids) -> dict[str, list[str]]:
     for sample_id in sample_ids:
         groups.setdefault(sample_id.split("-")[0], []).append(sample_id)
     return groups
+
+
+def _sample_group_labels(session) -> dict[str, str]:
+    """Best-effort real per-sample group label for display (e.g. the real
+    DiseaseState column), independent of G1's own reasoning-layer grouping
+    choice in study_design.py - this is just for coloring/labeling a chart,
+    not a claim about which grouping is the "right" comparison. Picks the
+    likely_outcome metadata column with the fewest distinct values (the
+    cleanest candidate) when more than one matches; falls back to the
+    sample_id prefix convention when there's no real metadata at all
+    (fixture dataset)."""
+    sample_ids = list(session.count_table.columns)
+    if session.metadata is None:
+        return {sid: (sid.split("-")[0] if "-" in sid else "sample") for sid in sample_ids}
+    classified = classify_metadata_columns(session.metadata)
+    outcome_cols = [c for c, info in classified.items() if info["role"] == "likely_outcome"]
+    if not outcome_cols:
+        return {sid: "sample" for sid in sample_ids}
+    col = min(outcome_cols, key=lambda c: classified[c]["n_unique"])
+    sub = session.metadata.loc[session.metadata.index.isin(sample_ids), col]
+    return {str(k): str(v) for k, v in sub.to_dict().items()}
 
 
 @app.get("/api/session/{sid}/normalize/strategy")
@@ -224,17 +250,34 @@ def get_rarefaction_retention(sid: str, depth: int | None = None):
 
 
 @app.get("/api/session/{sid}/rarefaction/curves")
-def get_rarefaction_curves(sid: str, n_steps: int = 12, n_iter: int = 3):
+def get_rarefaction_curves(sid: str, n_points: int = 24):
+    """Real per-sample rarefaction curves for the Normalize page's chart,
+    plus a plateau-derived default depth (G7) - exact expected richness
+    (see compute.p04_rarefaction.expected_richness), not Monte Carlo, and
+    each curve's points are spaced across that SAMPLE's own depth (not a
+    shared grid pinned to the cohort's max), so low-depth samples still get
+    a legible curve instead of one or two points.
+    """
     session = _require_session(sid)
     df = session.count_table
-    max_depth = int(df.sum(axis=0).max())
-    steps = np.linspace(200, max_depth, n_steps).astype(int)
-    rng = np.random.default_rng(0)
-    curves = {
-        sample_id: build_rarefaction_curve(df[sample_id].to_numpy(), steps, n_iter, rng)
-        for sample_id in df.columns
-    }
-    return {"gate_id": "G7", "curves": curves}
+    depths = df.sum(axis=0)
+    groups = _sample_group_labels(session)
+
+    samples = []
+    for sample_id in df.columns:
+        depth = int(depths[sample_id])
+        counts = df[sample_id].to_numpy()
+        curve_depths = np.linspace(0, depth, n_points).astype(int) if depth > 0 else np.array([0])
+        richness = expected_richness_curve(counts, curve_depths)
+        samples.append({
+            "id": sample_id,
+            "group": groups.get(sample_id, "sample"),
+            "depth": depth,
+            "curve": [[int(d), round(r, 2)] for d, r in zip(curve_depths, richness)],
+        })
+
+    suggested_threshold = suggest_plateau_depth(df)
+    return {"gate_id": "G7", "samples": samples, "suggested_threshold": suggested_threshold}
 
 
 # Alpha diversity (Alpha page) - Compute-only, same reasoning as G5/G7 above.
