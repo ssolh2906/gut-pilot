@@ -11,6 +11,7 @@ import { samples, totalSeq, meanDepth, minDepth, maxDepth, fmt, groupName, group
 import Reveal from "../components/Reveal";
 import ChartTools from "../components/ChartTools";
 import BarChart from "../components/charts/BarChart";
+import Spinner from "../components/Spinner";
 
 const FLOOR_PRESETS = [
   { value: 1000, label: "1,000 permissive" },
@@ -150,8 +151,9 @@ export default function QcPage() {
     });
   }
 
-  useAutoProceed(!checksRevealed, revealChecks);
-  useAutoProceed(checksRevealed, () => actions.advanceTo("rarefy"));
+  const autoPendingChecks = useAutoProceed(!checksRevealed, revealChecks);
+  const autoPendingContinue = useAutoProceed(checksRevealed, () => actions.advanceTo("rarefy"));
+  const autoPending = autoPendingChecks || autoPendingContinue;
 
   return (
     <section className="flex flex-col gap-5">
@@ -308,10 +310,15 @@ export default function QcPage() {
       )}
 
       <div className="page-foot">
-        <p className="hint">
-          {below.length === 0
-            ? "No sample is flagged at the current floor. The rarefaction gate is still where exclusion is decided."
-            : `${below.length === 1 ? "One sample sits" : below.length + " samples sit"} below the depth floor. They stay in the table and get resolved at the rarefaction gate.`}
+        <p className="hint flex items-center gap-2">
+          {autoPending && <Spinner />}
+          {autoPending
+            ? autoPendingChecks
+              ? "Reviewer running the sanity checks…"
+              : "Reviewer continuing to rarefaction…"
+            : below.length === 0
+              ? "No sample is flagged at the current floor. The rarefaction gate is still where exclusion is decided."
+              : `${below.length === 1 ? "One sample sits" : below.length + " samples sit"} below the depth floor. They stay in the table and get resolved at the rarefaction gate.`}
         </p>
         <button type="button" className="btn btn-primary btn-lg" disabled={!checksRevealed} onClick={() => actions.advanceTo("rarefy")}>
           Continue to rarefaction
