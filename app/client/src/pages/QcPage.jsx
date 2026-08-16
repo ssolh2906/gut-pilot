@@ -5,6 +5,7 @@
 // each logging a decision-log entry, continue button gated on both).
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppState } from "../state/AppStateContext";
+import { useAutoProceed } from "../hooks/useAutoProceed";
 import { belowFloor } from "../state/selectors";
 import { samples, totalSeq, meanDepth, minDepth, maxDepth, fmt, groupName, groupColor } from "../lib/data";
 import Reveal from "../components/Reveal";
@@ -141,12 +142,16 @@ export default function QcPage() {
     actions.reveal("qcChecks");
     setChecksRevealed(true);
     actions.addLog({
+      key: "qcChecks",
       page: "qc",
       conf: 99,
       src: "schema validator",
       text: "Parsed 24 samples by 187 genera from a tab-delimited count table, genus taken from the taxonomy lineage.",
     });
   }
+
+  useAutoProceed(!checksRevealed, revealChecks);
+  useAutoProceed(checksRevealed, () => actions.advanceTo("rarefy"));
 
   return (
     <section className="flex flex-col gap-5">

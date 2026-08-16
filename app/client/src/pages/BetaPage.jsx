@@ -15,6 +15,7 @@
 // disabled (no phylogenetic tree), per docs/gates/G9.md.
 import { useRef } from "react";
 import { useAppState } from "../state/AppStateContext";
+import { useAutoProceed } from "../hooks/useAutoProceed";
 import { retained } from "../state/selectors";
 import { OptRow, Opt, GateNote } from "../components/Gate";
 import ChartTools from "../components/ChartTools";
@@ -195,6 +196,8 @@ export default function BetaPage() {
     const i = BETA_INFO[value];
     actions.addLog({ key: "g9", page: "beta", human: true, src: "human-in-the-loop", text: `Beta diversity metric set to ${i.label} (R² = ${i.r2.toFixed(3)}, p = ${i.p.toFixed(3)}).` });
   }
+
+  useAutoProceed(true, () => actions.advanceTo("da"));
 
   return (
     <section className="flex flex-col gap-5">

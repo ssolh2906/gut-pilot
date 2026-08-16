@@ -10,6 +10,7 @@
 // enabled for the same reason — there's no reveal state left to wait on.
 import { useRef, useState } from "react";
 import { useAppState } from "../state/AppStateContext";
+import { useAutoProceed } from "../hooks/useAutoProceed";
 import { retained, adjustedP, sigCount, CORR_LABEL } from "../state/selectors";
 import { OptRow, Opt, GateNote } from "../components/Gate";
 import ChartTools from "../components/ChartTools";
@@ -247,6 +248,8 @@ export default function AlphaPage() {
     actions.setCorrection(value);
     actions.addLog({ key: "g8", page: "alpha", human: true, src: "human-in-the-loop", text: `Significance settings: alpha = ${state.alphaLevel} with ${CORR_LABEL[value]}.` });
   }
+
+  useAutoProceed(true, () => actions.advanceTo("beta"));
 
   return (
     <section className="flex flex-col gap-5">

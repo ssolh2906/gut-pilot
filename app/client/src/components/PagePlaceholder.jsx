@@ -5,9 +5,11 @@
 // every page has real content.
 // TODO: replace per page, in work-order sequence, with the real gate/chart content.
 import { useAppState } from "../state/AppStateContext";
+import { useAutoProceed } from "../hooks/useAutoProceed";
 
 export default function PagePlaceholder({ title, lede, nextId, nextLabel }) {
   const { actions } = useAppState();
+  useAutoProceed(!!nextId, () => actions.advanceTo(nextId));
   return (
     <section className="flex flex-col gap-5">
       <div className="page-head">

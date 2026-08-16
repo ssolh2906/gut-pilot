@@ -15,6 +15,7 @@
 // left to gate, so it's dropped rather than kept as an empty click.
 import { useRef } from "react";
 import { useAppState } from "../state/AppStateContext";
+import { useAutoProceed } from "../hooks/useAutoProceed";
 import { retained } from "../state/selectors";
 import { OptRow, Opt, GateNote } from "../components/Gate";
 import ChartTools from "../components/ChartTools";
@@ -135,6 +136,7 @@ export default function NormalizationPage() {
 
   function approve() {
     actions.addLog({
+      key: "rarefyApprove",
       page: "rarefy",
       human: true,
       src: "human-in-the-loop",
@@ -144,6 +146,8 @@ export default function NormalizationPage() {
     });
     actions.advanceTo("alpha");
   }
+
+  useAutoProceed(true, approve);
 
   return (
     <section className="flex flex-col gap-5">

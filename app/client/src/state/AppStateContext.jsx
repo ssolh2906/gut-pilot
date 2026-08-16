@@ -82,6 +82,19 @@ export function AppStateProvider({ children }) {
 
       // ---- progressive reveal ----
       reveal: (id) => dispatch({ type: "REVEAL", id }),
+
+      // ---- proceed with recommended options ----
+      setAutoProceed: (value) => {
+        dispatch({ type: "SET_AUTO_PROCEED", value });
+        if (value) {
+          addLog({
+            page: "upload",
+            human: true,
+            src: "human-in-the-loop",
+            text: "Reviewer switched on auto-proceed: every remaining gate accepts the recommended option automatically.",
+          });
+        }
+      },
     };
   }, []);
 
