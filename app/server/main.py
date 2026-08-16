@@ -7,8 +7,11 @@ this is built against.
 """
 
 import math
+import re
+from pathlib import Path
 
 import numpy as np
+import pandas as pd
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -33,15 +36,21 @@ from compute.p06_beta_diversity import (
     run_permanova,
 )
 from compute.p07_artifact_checks import check_normalization_metric_mismatch
+from compute.p07_differential_abundance import build_da_result, n_tested_by_preset
 from reasoning.chatbot import chat_session
 from reasoning.g4_taxonomic_rank import apply_g4_rank, build_g4_response
 from reasoning.g6_normalization import apply_g6_strategy, build_g6_response
 from reasoning.g8_alpha_diversity import build_g8_response
 from reasoning.g9_beta_diversity import build_g9_response
+from reasoning.g10_differential_abundance import build_g10_response
+from reasoning.g_synthesis import build_synthesis_response
 from reasoning.study_design import build_study_design_response
 from session_store import create_session, get_session
 
 app = FastAPI(title="Gut Pilot Reviewer API")
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_KNOWN_TAXA_CSV = _REPO_ROOT / "research" / "fixtures" / "known_taxa_crc.csv"
 
 app.add_middleware(
     CORSMiddleware,
@@ -110,15 +119,45 @@ def _require_session(sid: str):
         raise HTTPException(status_code=404, detail="session not found")
 
 
-def _prefix_groups(sample_ids) -> dict[str, list[str]]:
-    """No real G1 group metadata on Session yet - fall back to the sample_id
-    prefix before "-" (e.g. "H-01" -> "H"), the convention the fixture itself
-    follows. Replace with a real metadata-driven grouping once G1 lands.
+_NON_PREFIX_RE = re.compile(r"^non", re.IGNORECASE)
+
+
+def _two_group_assignment(session) -> tuple[dict[str, list[str]], tuple[str, str] | None]:
+    """Best-effort two-group split for real group-comparison statistics
+    (alpha/beta group tests, differential abundance) - independent of G1's
+    own reasoning-layer column/level choice in study_design.py, this just
+    needs SOME defensible two real groups to run a two-sample test against.
+
+    Built on _sample_group_labels below (handles both real metadata and the
+    fixture's "H-01"-style id-prefix convention). When that column has more
+    than two levels (e.g. crc_baxter's H/CRC/nonCRC), takes the two largest,
+    excluding any level named like "non-X" if doing so still leaves >=2
+    groups - a generic stand-in for the field convention
+    research/02_study_design.md documents ("only the healthy patients were
+    used as controls") without hardcoding any dataset's specific level names.
+
+    Output: ({label: [sample_id, ...]} restricted to exactly the two chosen
+    labels, (label_a, label_b) sorted alphabetically) - or ({}, None) if
+    fewer than two groups exist at all (single-cohort / no metadata).
     """
-    groups: dict[str, list[str]] = {}
-    for sample_id in sample_ids:
-        groups.setdefault(sample_id.split("-")[0], []).append(sample_id)
-    return groups
+    labels_by_sample = _sample_group_labels(session)
+    counts: dict[str, int] = {}
+    for label in labels_by_sample.values():
+        counts[label] = counts.get(label, 0) + 1
+    if len(counts) < 2:
+        return {}, None
+
+    candidates = counts
+    non_excluded = {g: n for g, n in counts.items() if not _NON_PREFIX_RE.match(g)}
+    if len(non_excluded) >= 2:
+        candidates = non_excluded
+    label_a, label_b = sorted(sorted(candidates, key=lambda g: -candidates[g])[:2])
+
+    groups: dict[str, list[str]] = {label_a: [], label_b: []}
+    for sample_id, label in labels_by_sample.items():
+        if label in groups:
+            groups[label].append(sample_id)
+    return groups, (label_a, label_b)
 
 
 def _sample_group_labels(session) -> dict[str, str]:
@@ -289,7 +328,7 @@ def get_alpha_diversity(sid: str, depth: int | None = None, n_iterations: int = 
     threshold = session.threshold if depth is None else depth
     rng = np.random.default_rng(0)
     raw = compute_alpha_diversity(session.count_table, threshold, n_iterations, rng)
-    groups = _prefix_groups(session.count_table.columns)
+    groups, _labels = _two_group_assignment(session)
 
     group_tests = {}
     if len(groups) == 2:
@@ -335,9 +374,13 @@ def get_beta_diversity(sid: str, metric: str | None = None):
     coords = ordination["coords"].iloc[:, :2]
     coords.columns = ["PC1", "PC2"]
 
-    groups = _prefix_groups(dist.index)
-    grouping = [next(g for g, ids in groups.items() if sample in ids) for sample in dist.index]
-    permanova_result = run_permanova(dist, grouping) if len(groups) == 2 else None
+    groups, _labels = _two_group_assignment(session)
+    permanova_result = None
+    if len(groups) == 2:
+        member_ids = [s for ids in groups.values() for s in ids]
+        sub_dist = dist.loc[member_ids, member_ids]
+        grouping = [next(g for g, ids in groups.items() if sample in ids) for sample in sub_dist.index]
+        permanova_result = run_permanova(sub_dist, grouping)
 
     return {
         "metric": metric,
@@ -350,3 +393,115 @@ def get_beta_diversity(sid: str, metric: str | None = None):
         "groups": groups,
         "permanova": permanova_result,
     }
+
+
+# Differential abundance (Differential page / G10). Runs on the RAW,
+# un-rarefied count table per research/07_differential_abundance.md's own
+# hard guardrail ("never run DA on the rarefied diversity table merely
+# because Step 4 used rarefaction") - independent of session.threshold, and
+# restricted to the two-group comparison (real metadata, nonCRC-style third
+# arms excluded) via _two_group_assignment.
+
+
+def _known_taxa_table() -> pd.DataFrame:
+    return pd.read_csv(_KNOWN_TAXA_CSV)
+
+
+@app.get("/api/session/{sid}/da/prevalence")
+def get_da_prevalence(sid: str):
+    session = _require_session(sid)
+    groups, labels = _two_group_assignment(session)
+    if labels is None:
+        raise HTTPException(status_code=400, detail="need at least two real groups to run differential abundance")
+    member_ids = [s for ids in groups.values() for s in ids]
+    prevalence_options = n_tested_by_preset(session.count_table[member_ids])
+    group_summary = {g: len(ids) for g, ids in groups.items()}
+    return build_g10_response(prevalence_options, group_summary)
+
+
+@app.get("/api/session/{sid}/da/results")
+def get_da_results(sid: str, threshold: float = 0.10, correction: str = "bh", alpha: float = 0.05):
+    session = _require_session(sid)
+    groups, labels = _two_group_assignment(session)
+    if labels is None:
+        raise HTTPException(status_code=400, detail="need at least two real groups to run differential abundance")
+
+    grouping = [
+        next(g for g, ids in groups.items() if sample in ids)
+        for sample in session.count_table.columns
+        if any(sample in ids for ids in groups.values())
+    ]
+    member_ids = [s for s in session.count_table.columns if any(s in ids for ids in groups.values())]
+    df = session.count_table[member_ids]
+
+    result = build_da_result(df, grouping, labels, threshold, correction, alpha, _known_taxa_table())
+    result["group_counts"] = {g: len(ids) for g, ids in groups.items()}
+    return result
+
+
+# Scientific synthesis (Summary page) - no gate ID, this page interprets and
+# proposes, it does not decide. Recomputes real alpha/beta/DA results fresh
+# (reusing the same Compute functions the Alpha/Beta/Differential pages call)
+# so the synthesis is grounded in real numbers regardless of what a given
+# page's own UI currently renders.
+
+
+@app.get("/api/session/{sid}/synthesis")
+def get_synthesis(sid: str):
+    session = _require_session(sid)
+    groups, labels = _two_group_assignment(session)
+    if labels is None:
+        raise HTTPException(status_code=400, detail="need at least two real groups to synthesize a comparison")
+    label_a, label_b = labels
+
+    depths = session.count_table.sum(axis=0).to_dict()
+    retention = samples_above_depth(depths, session.threshold)
+
+    rng = np.random.default_rng(0)
+    alpha_raw = compute_alpha_diversity(session.count_table, session.threshold, 20, rng)
+    alpha_tests = {}
+    for metric in alpha_raw.index:
+        values_by_group = {g: alpha_raw.loc[metric, ids].dropna().tolist() for g, ids in groups.items()}
+        if all(values_by_group.values()):
+            alpha_tests[metric] = alpha_group_test(values_by_group)
+
+    beta_metric = session.beta_metric
+    dist = _BETA_MATRIX_FNS[beta_metric](session.count_table)
+    member_ids = [s for ids in groups.values() for s in ids]
+    sub_dist = dist.loc[member_ids, member_ids]
+    grouping = [next(g for g, ids in groups.items() if sample in ids) for sample in sub_dist.index]
+    permanova = run_permanova(sub_dist, grouping)
+
+    da_grouping = [next(g for g, ids in groups.items() if sample in ids) for sample in member_ids]
+    da = build_da_result(
+        session.count_table[member_ids], da_grouping, labels, 0.10, "bh", 0.05, _known_taxa_table()
+    )
+    top_hits = sorted(
+        (g for g in da["genera"].values() if g["significant"]),
+        key=lambda g: g["q"],
+    )[:8]
+
+    context = {
+        "group_labels": [label_a, label_b],
+        "group_counts": {g: len(ids) for g, ids in groups.items()},
+        "normalization_strategy": session.norm_strategy,
+        "rarefaction_depth": session.threshold,
+        "samples_retained": len(retention["retained"]),
+        "samples_excluded_for_depth": len(retention["excluded"]),
+        "taxonomic_rank": session.rank,
+        "alpha_diversity_tests": alpha_tests,
+        "beta_diversity": {"metric": beta_metric, "permanova": permanova},
+        "differential_abundance": {
+            "method": "CLR normalization + Wilcoxon rank-sum - a SINGLE method, not a multi-method consensus panel (ANCOM-BC2/ALDEx2 are R-only and unavailable in this pipeline)",
+            "n_tested": da["n_tested"], "n_total": da["n_total"], "n_significant": da["n_significant"],
+            "prevalence_threshold": 0.10, "top_hits": top_hits,
+        },
+        "known_taxa_literature_crosscheck": da["known_taxa"],
+        "other_datasets_available_in_this_project": [
+            {
+                "id": "cdi_schubert", "condition": "C. difficile infection (unrelated to CRC)",
+                "note": "A second real 16S cohort bundled in this project - not a CRC replication cohort, but useful as a specificity check (e.g. whether a hit here is CRC-specific or a generic dysbiosis marker) rather than a wet-lab-only follow-up.",
+            }
+        ],
+    }
+    return build_synthesis_response(context)

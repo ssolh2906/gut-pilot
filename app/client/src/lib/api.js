@@ -96,3 +96,25 @@ export function sendChatMessage(sessionId, message, page) {
     body: JSON.stringify({ message, page }),
   });
 }
+
+// Not cheap — same live Claude + Paperclip cost pattern as normalize/strategy.
+// G10's gate note (why 10% prevalence applies here) — fetched once, cached.
+export function getDaPrevalence(sessionId) {
+  return request(`/session/${sessionId}/da/prevalence`);
+}
+
+// Cheap — pure Compute, no model call. Real differential-abundance results
+// (CLR + Wilcoxon, see compute/p07_differential_abundance.py) at a given
+// prevalence threshold/correction/alpha — safe to call on every threshold
+// change, unlike the gate note above.
+export function getDaResults(sessionId, { threshold = 0.1, correction = "bh", alpha = 0.05 } = {}) {
+  const qs = new URLSearchParams({ threshold, correction, alpha }).toString();
+  return request(`/session/${sessionId}/da/results?${qs}`);
+}
+
+// Not cheap — a live Claude call (no Paperclip tools on this one), longer
+// than the other gates' since it's synthesizing the whole run — expect
+// this to take longer than a typical gate note.
+export function getSynthesis(sessionId) {
+  return request(`/session/${sessionId}/synthesis`);
+}

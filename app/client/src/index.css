@@ -1854,3 +1854,33 @@ input[type="range"]::-moz-range-thumb {
     outline-offset: 2px;
   }
 }
+
+/* ============================================================ DATA TABLES
+   Differential abundance's leading-hits / known-taxa tables (page 7) and
+   Summary's sources table (page 8) - no charting/plotting involved, so
+   these stay plain HTML tables rather than hand-rolled SVG. */
+.kt-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.kt-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--color-ink-2);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--color-line-2);
+  white-space: nowrap;
+}
+.kt-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--color-line);
+  vertical-align: top;
+}
+.kt-table tbody tr:hover {
+  background: var(--color-surface-2);
+}

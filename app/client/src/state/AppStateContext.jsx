@@ -112,6 +112,8 @@ export function AppStateProvider({ children }) {
       setG6Gate: (data) => dispatch({ type: "SET_G6_GATE", data }),
       setG8Gate: (data) => dispatch({ type: "SET_G8_GATE", data }),
       setG9Gate: (data) => dispatch({ type: "SET_G9_GATE", data }),
+      setDaGate: (data) => dispatch({ type: "SET_DA_GATE", data }),
+      setSynthesisGate: (data) => dispatch({ type: "SET_SYNTHESIS_GATE", data }),
     };
   }, []);
 

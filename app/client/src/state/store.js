@@ -45,6 +45,12 @@ export const initialState = {
   // rationale as g6Gate above.
   g9Gate: null, // cached GET .../beta/metric response — same caching
   // rationale as g6Gate above.
+  daGate: null, // cached GET .../da/prevalence response (G10 note) — same
+  // caching rationale as g6Gate above. Real per-threshold results (the
+  // volcano/known-taxa/artifact panels) are NOT cached here — those are
+  // cheap Compute-only calls refetched on every threshold change, see DaPage.
+  synthesisGate: null, // cached GET .../synthesis response — same caching
+  // rationale as g6Gate above.
 };
 
 export function reducer(state, action) {
@@ -116,6 +122,10 @@ export function reducer(state, action) {
       return { ...state, g8Gate: action.data };
     case "SET_G9_GATE":
       return { ...state, g9Gate: action.data };
+    case "SET_DA_GATE":
+      return { ...state, daGate: action.data };
+    case "SET_SYNTHESIS_GATE":
+      return { ...state, synthesisGate: action.data };
 
     case "GO_PAGE": {
       const idx = pageIndex(action.id);

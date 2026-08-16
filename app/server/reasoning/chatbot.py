@@ -26,7 +26,8 @@ _PAGE_TO_GATE = {
     "rarefy": "G6",
     "alpha": "G8",
     "beta": "G9",
-    "differential": "G10",
+    "da": "G10",
+    "refs": "SYNTHESIS",
 }
 
 _SYSTEM_PROMPT_BASE = """You are "Gut Pilot: The Skeptical Reviewer," an AI agent \

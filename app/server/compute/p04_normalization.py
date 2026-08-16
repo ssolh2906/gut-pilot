@@ -91,6 +91,13 @@ def clr_transform(df: pd.DataFrame) -> pd.DataFrame:
     Output: transformed df, same shape, index=taxon, columns=sample
     """
     rel = df.div(df.sum(axis=0), axis=1)
-    replaced = multi_replace(rel.T.values)
+    # .copy(): skbio's multi_replace mutates its input array in place. Under
+    # FastAPI, concurrent requests (e.g. rapid prevalence-threshold clicks on
+    # the Differential page) run this in different threadpool threads at
+    # once - without a copy here, `.values` can alias memory another
+    # in-flight call is simultaneously replacing zeros in, corrupting both
+    # (observed as NaN results downstream, intermittently, only under
+    # concurrent load).
+    replaced = multi_replace(rel.T.values.copy())
     transformed = clr(replaced)
     return pd.DataFrame(transformed.T, index=df.index, columns=df.columns)

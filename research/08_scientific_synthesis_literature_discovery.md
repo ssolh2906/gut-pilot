@@ -5,7 +5,7 @@
 ```yaml
 step_id: scientific_synthesis
 page_key: synthesis
-gate_ids: []
+gate_ids: [SYNTHESIS]
 inputs:
   [study_design, decision_log, all_gate_notes, qc_results, alpha_results,
    beta_results, differential_abundance_results, artifact_warnings,

@@ -286,6 +286,18 @@ export const REFS = [
         journal: "Nature Communications 8:1784", doi: "10.1038/s41467-017-01973-8",
         used: "Expected direction for Roseburia and Faecalibacterium in the known-taxa cross-check",
       },
+      {
+        key: "wirbel2019", authors: "Wirbel J, Pyl PT, Kartal E, et al.", year: 2019,
+        title: "Meta-analysis of fecal metagenomes reveals global microbial signatures that are specific for colorectal cancer",
+        journal: "Nature Medicine 25:679-689", doi: "10.1038/s41591-019-0406-6",
+        used: "Feature-resolution tradeoff cited at the taxonomic rank gate (G4)",
+      },
+      {
+        key: "baxter2016", authors: "Baxter NT, Ruffin MT, Rogers MAM, Schloss PD", year: 2016,
+        title: "Microbiota-based model improves the sensitivity of fecal immunochemical test for detecting colonic lesions",
+        journal: "Genome Medicine 8:37", doi: "10.1186/s13073-016-0290-3",
+        used: "Source study for this run's dataset; substitute batch-design citation at the study design gate (G2) when no real batch column exists",
+      },
     ],
   },
   {
