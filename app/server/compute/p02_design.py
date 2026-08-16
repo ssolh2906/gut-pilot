@@ -9,13 +9,12 @@ def infer_groups(sample_ids: list[str]) -> dict:
     """Infer group membership from a sample ID naming pattern (G1).
 
     Input: list of sample_id
-    Output: {"pattern": str, "groups": {sample_id: group_label}, "confidence": float} (fake)
+    Output: {"pattern": str, "groups": {sample_id: group_label}} (fake)
     """
-    # TODO: real pattern detection (e.g. common prefix clustering) + a defensible confidence score.
+    # TODO: real pattern detection (e.g. common prefix clustering). or.. this can be done by AI agent. Okay to modify or remove this function.
     return {
         "pattern": "prefix",
         "groups": {s: s.split("-")[0] for s in sample_ids},
-        "confidence": 0.92,
     }
 
 
@@ -48,7 +47,7 @@ def check_sample_independence(sample_ids: list[str], metadata: pd.DataFrame) -> 
     """Check whether samples look independent or paired/repeated-measures (G3).
 
     Input: list of sample_id, metadata DataFrame (indexed by sample_id)
-    Output: {"pairing": "independent"|"paired", "confidence": float} (fake)
+    Output: {"pairing": "independent"|"paired"} (fake)
     """
-    # TODO: real check (e.g. repeated subject_id in metadata) + a defensible confidence score.
-    return {"pairing": "independent", "confidence": 0.96}
+    # TODO: real check (e.g. repeated subject_id in metadata).
+    return {"pairing": "independent"}
