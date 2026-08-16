@@ -13,7 +13,7 @@
 // pause so auto-proceed reads as a pipeline stepping through each gate
 // rather than a jump-cut to the end. Change this one constant to feel out
 // a faster/slower pace.
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAppState } from "../state/AppStateContext";
 
 export const AUTO_PROCEED_DELAY_MS = 700;
@@ -22,12 +22,27 @@ export const AUTO_PROCEED_DELAY_MS = 700;
 // (usually just `true`, since defaults are already loaded; a page waiting on
 // something else, like a prior reveal, can pass that condition instead).
 // `onProceed` — the same function the page's own button/click handler calls.
+// Returns `pending` — true for the AUTO_PROCEED_DELAY_MS window before
+// onProceed fires, so the page can show a spinner instead of sitting there
+// looking frozen.
 export function useAutoProceed(ready, onProceed) {
   const { state } = useAppState();
+  const [pending, setPending] = useState(false);
   useEffect(() => {
-    if (!(state.autoProceed && ready)) return;
-    const timer = setTimeout(onProceed, AUTO_PROCEED_DELAY_MS);
-    return () => clearTimeout(timer);
+    if (!(state.autoProceed && ready)) {
+      setPending(false);
+      return;
+    }
+    setPending(true);
+    const timer = setTimeout(() => {
+      setPending(false);
+      onProceed();
+    }, AUTO_PROCEED_DELAY_MS);
+    return () => {
+      clearTimeout(timer);
+      setPending(false);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.autoProceed, ready]);
+  return pending;
 }

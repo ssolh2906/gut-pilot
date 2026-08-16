@@ -15,6 +15,7 @@ import { useAutoProceed } from "../hooks/useAutoProceed";
 import { getRank, setRank as postRank, getStudyDesign } from "../lib/api";
 import Reveal from "../components/Reveal";
 import { OptRow, Opt, GateNote, ConfBadge } from "../components/Gate";
+import Spinner from "../components/Spinner";
 import { samples, groupName, fmt, groupColor } from "../lib/data";
 
 const RANK_LABEL = { phylum: "Phylum", family: "Family", genus: "Genus" };
@@ -166,7 +167,7 @@ export default function DesignPage() {
   // never trigger a live paid call on its own; it only ever uses whatever
   // rank data (or lack of it) is already there, same as a manual confirm
   // click would if G4 was never opened.
-  useAutoProceed(true, confirm);
+  const autoPending = useAutoProceed(true, confirm);
 
   return (
     <section className="flex flex-col gap-5">
@@ -188,7 +189,8 @@ export default function DesignPage() {
 
       {sdLoading && (
         <div className="block appear">
-          <div className="block-body pad-t text-sm text-ink-2">
+          <div className="block-body pad-t text-sm text-ink-2 flex items-center gap-2.5">
+            <Spinner />
             Reviewer is checking the real metadata for a grouping variable, testing for batch confounding, and verifying sample independence — this takes a little while.
           </div>
         </div>
@@ -347,7 +349,8 @@ export default function DesignPage() {
           )}
 
           {g4Loading && (
-            <p className="text-sm text-ink-2">
+            <p className="text-sm text-ink-2 flex items-center gap-2.5">
+              <Spinner />
               Reviewer is weighing the rank trade-off against this dataset's real feature counts and verifying its citation live — this takes a little while.
             </p>
           )}
@@ -384,10 +387,13 @@ export default function DesignPage() {
       </div>
 
       <div className="page-foot">
-        <p className="hint">
-          {groupSource === "none"
-            ? "Continuing in single-cohort mode. Group comparisons stay disabled for the rest of the run."
-            : "Confirming records these four choices in the decision log. You can come back and change them."}
+        <p className="hint flex items-center gap-2">
+          {autoPending && <Spinner />}
+          {autoPending
+            ? "Reviewer confirming the recommended design…"
+            : groupSource === "none"
+              ? "Continuing in single-cohort mode. Group comparisons stay disabled for the rest of the run."
+              : "Confirming records these four choices in the decision log. You can come back and change them."}
         </p>
         <button type="button" className="btn btn-primary btn-lg" disabled={confirming} onClick={confirm}>
           {confirming ? "Confirming…" : "Confirm design and continue"}
