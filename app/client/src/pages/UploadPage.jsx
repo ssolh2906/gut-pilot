@@ -9,6 +9,7 @@
 // components/FloatingChat.jsx) — this page no longer has its own.
 import { useRef, useState } from "react";
 import { useAppState } from "../state/AppStateContext";
+import { createSession } from "../lib/api";
 
 const SCHEMA_ITEMS = [
   <>Column 1 is the full taxonomy lineage, for example <span className="font-mono">Bacteria;…;Genus</span></>,
@@ -52,8 +53,17 @@ export default function UploadPage() {
       setProgress(Math.min(p, 100));
       if (p >= 100) {
         clearInterval(timerRef.current);
-        setTimeout(() => {
+        setTimeout(async () => {
           setIsUploading(false);
+          // Cheap call — just loads the backend's fixture dataset, no model
+          // involved. Real per-file ingestion isn't wired up yet.
+          try {
+            const session = await createSession();
+            actions.setSessionId(session.session_id);
+          } catch {
+            // Backend not running — later pages that need it will just show
+            // their own "reviewer unavailable" state rather than blocking here.
+          }
           actions.addLog({
             page: "upload",
             conf: 99,

@@ -30,6 +30,12 @@ export const initialState = {
   groupVersion: 0, // bumped when a sample's group is toggled in place (see actions.toggleSampleGroup)
   currentPage: "upload",
   unlocked: 0, // furthest reachable index into PAGES
+
+  // ---- backend wiring ----
+  sessionId: null, // set once the backend has loaded a dataset (see UploadPage)
+  g6Gate: null, // cached GET/POST .../normalize/strategy response. This is a
+  // live Claude + Paperclip call, so it's fetched once on demand (see
+  // NormalizationPage) and cached here rather than re-fetched on every mount.
 };
 
 export function reducer(state, action) {
@@ -85,6 +91,11 @@ export function reducer(state, action) {
       const log = at >= 0 ? state.log.map((e, i) => (i === at ? entry : e)) : [...state.log, entry];
       return { ...state, log };
     }
+
+    case "SET_SESSION_ID":
+      return { ...state, sessionId: action.id };
+    case "SET_G6_GATE":
+      return { ...state, g6Gate: action.data };
 
     case "GO_PAGE": {
       const idx = pageIndex(action.id);
