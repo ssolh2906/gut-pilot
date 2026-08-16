@@ -237,3 +237,9 @@ app/.DS_Store
 # output — so it needs an explicit exception.
 !app/client/src/lib/
 
+# Same story: the Python "MANIFEST" packaging-artifact rule is
+# case-insensitive on macOS and swallows tests/eval/manifest/ (the eval
+# harness's test-case manifest, not a build artifact) — explicit exception.
+!tests/eval/manifest/
+!tests/eval/manifest/**
+
