@@ -133,7 +133,7 @@ The final page should prioritize scientific insight in this order:
 2. **What we learned — 3–6 evidence-backed findings.** Quantitative, ranked, concise.
 3. **How this fits the field.** Literature-validation matrix showing replicated, mixed, contradictory, and potentially novel findings.
 4. **Discovery opportunities.** 1–3 mechanistic hypotheses and 2–5 ranked experiments.
-5. **What could still explain this?** Claim-specific limitations and alternative explanations.
+5. **Further statistical consideration & Limitations** Claim-specific limitations and alternative explanations.
 6. **Key references.** Only the papers that materially support interpretation or methodology, grouped by claim rather than chronology.
 7. **Audit & reproduce.** Collapsible decision timeline, parameters, user overrides, software/method versions, and downloadable `RUN.JSON`/results tables.
 
