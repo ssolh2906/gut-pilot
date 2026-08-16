@@ -12,6 +12,7 @@ import re
 
 import anthropic
 
+from .knowledge_base import load_research_notes
 from .paperclip_tool import paperclip_lookup_doi, paperclip_read_excerpt, paperclip_search
 
 # Haiku while iterating on this gate — cheap and fast enough to develop
@@ -31,7 +32,7 @@ _CITATIONS = {
     "gloor2017": "10.3389/fmicb.2017.02224",
 }
 
-SYSTEM_PROMPT = """You are the reasoning layer behind "Gut Pilot: The Skeptical \
+_SYSTEM_PROMPT_BASE = """You are the reasoning layer behind "Gut Pilot: The Skeptical \
 Reviewer," an AI agent that reviews microbiome (16S rRNA) analysis pipelines. \
 You are working the Normalization gate (G6) - the least methodologically \
 settled step in the whole pipeline.
@@ -103,6 +104,32 @@ honest gap is fine, a fabricated citation is not.
 """
 
 
+def _build_system_prompt():
+    """Append the team's own written grounding material for G6 from
+    research/*.md to the base system prompt, read fresh on every call -
+    not cached - so an edit takes effect on the next request with no
+    server restart.
+
+    research/ has no step file covering G6 yet (it only goes through Step
+    3, raw QC), so this is currently a no-op - Claude reasons from the
+    base prompt alone until a normalization step doc is written and
+    tagged `gate_ids: [G6, ...]`.
+    """
+    parts = [_SYSTEM_PROMPT_BASE]
+
+    for note in load_research_notes("G6"):
+        parts.append(
+            "\n\nHere is one of your team's own pipeline-step 'Agent "
+            "instructions' documents (from research/) that covers this "
+            "gate - it is the authoritative source for this gate's "
+            "contract and reasoning guidance. Read it, and where it's "
+            "more specific or differs from anything above, defer to it."
+            "\n\n---\n" + note + "\n---\n"
+        )
+
+    return "".join(parts)
+
+
 def _retention_preview(count_table, threshold):
     depths = count_table.sum(axis=0)
     excluded = [s for s in count_table.columns if depths[s] < threshold]
@@ -130,7 +157,7 @@ def _run_reasoning(retention_by_strategy):
     runner = client.beta.messages.tool_runner(
         model=MODEL,
         max_tokens=4000,
-        system=SYSTEM_PROMPT,
+        system=_build_system_prompt(),
         tools=[paperclip_lookup_doi, paperclip_read_excerpt, paperclip_search],
         messages=[{"role": "user", "content": user_prompt}],
     )
