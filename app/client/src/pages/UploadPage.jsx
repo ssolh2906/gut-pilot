@@ -34,7 +34,7 @@ const UploadIcon = () => (
   </svg>
 );
 export default function UploadPage() {
-  const { actions } = useAppState();
+  const { state, actions } = useAppState();
   const [fileName, setFileName] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -168,6 +168,28 @@ export default function UploadPage() {
       </div>
 
       {fileName && !isUploading && <div className="text-xs font-mono text-ink-2">Selected: {fileName}</div>}
+
+      <div className="block">
+        <div className="block-body pad-t flex items-center justify-between gap-4">
+          <div>
+            <h3>Proceed with recommended options</h3>
+            <p className="sub mt-1">
+              Every gate accepts the reviewer's recommended option and advances on its own — the same confirm/continue action a manual click would trigger, just without waiting for the click. You
+              can still review and change any setting afterward.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={state.autoProceed}
+            aria-label="Proceed with recommended options"
+            onClick={() => actions.setAutoProceed(!state.autoProceed)}
+            className={`relative inline-flex h-6 w-11 flex-none items-center rounded-full transition-colors ${state.autoProceed ? "bg-accent" : "bg-surface-3"}`}
+          >
+            <span className={`inline-block h-4.5 w-4.5 transform rounded-full bg-white shadow transition-transform ${state.autoProceed ? "translate-x-6" : "translate-x-1"}`} />
+          </button>
+        </div>
+      </div>
     </section>
   );
 }

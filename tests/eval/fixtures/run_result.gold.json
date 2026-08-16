@@ -1,0 +1,110 @@
+{
+  "meta": {
+    "dataset_id": "crc_baxter",
+    "group_a": "H",
+    "group_b": "CRC",
+    "run_timestamp": "2026-08-15T18:00:00Z",
+    "pipeline_version": "gold-fixture-v1"
+  },
+  "ingestion": {
+    "n_taxa_rows": 122510,
+    "n_samples": 490,
+    "n_genera": 254,
+    "n_otus_unassigned": 24146,
+    "samples_joined": 490,
+    "samples_dropped_on_join": 0,
+    "trailing_total_column_found": false
+  },
+  "study_design": {
+    "group_source": "metadata",
+    "groups": {"H": 172, "CRC": 120, "nonCRC": 198},
+    "comparison_groups": {"H": 172, "CRC": 120},
+    "dropped_groups": ["nonCRC"],
+    "drop_rationale": "The nonCRC arm (198 samples, adenoma and advanced-adenoma patients) is excluded from this comparison. Per the standard convention for CRC case-control studies with multiple control groups, only the healthy (H) patients are used as controls when comparing against CRC cases (Duvallet et al. 2017 apply this exact rule to this exact dataset: 'only the healthy patients were used as controls'). Including the adenoma arm as a second control group would conflate two biologically distinct comparisons.",
+    "batch_column_present": false,
+    "batch_gate_note": "No usable batch/plate/sequencing-run identifier survives in the public SRA metadata for this dataset: Run_s is a unique per-sample accession (490 distinct values, not a shared batch label), and Center_Name_s, LoadDate_s, ReleaseDate_s, and sequencer are all constant across every sample. A batch-vs-group cross-tabulation cannot be computed from this metadata. This is a lesser concern than usual for this specific dataset, however: Baxter et al. (2016) explicitly report that the 490 samples were split across 3 sequencing runs and randomly assigned to those runs specifically to avoid confounding the analysis with diagnosis or demographics. We proceed without a batch correction, relying on that published randomization rather than a computed check we have no data to run.",
+    "pairing": "independent",
+    "n_unique_subjects": 490,
+    "rank": "genus",
+    "feature_counts": {"phylum": 17, "family": 92, "genus": 254}
+  },
+  "raw_qc": {
+    "depth_stats": {"min": 751, "median": 10499, "max": 134112, "mean": 16587.59},
+    "depth_floor": 5000,
+    "excluded_below_floor": {"H": 50, "CRC": 21},
+    "excluded_below_floor_pct": {"H": 29.1, "CRC": 17.5},
+    "imbalance_flagged": true,
+    "imbalance_note": "Exclusion at the 5,000-read floor is asymmetric: 29.1% of Healthy samples fall below the floor versus 17.5% of CRC samples -- nearly double the exclusion rate in the control arm. This should be watched through normalization, since it could plausibly still affect the retained cohort's balance depending on the final rarefaction depth chosen.",
+    "sanity_checklist": {"parsing_failures": 0, "duplicate_sample_ids": 0, "samples_below_floor": 71}
+  },
+  "normalization": {
+    "method": "rarefaction",
+    "chosen_depth": 4800,
+    "retained_at_chosen_depth": {"H": 150, "CRC": 106},
+    "considered_alternative_published_depth": 10000,
+    "retention_at_alternative_depth": {"H": 80, "CRC": 69},
+    "gate_note": "Two published, methodologically legitimate normalization choices exist for this exact dataset and they disagree. Baxter et al. (2016) rarefied every sample to 10,000 reads for their own random-forest analysis. Duvallet et al. (2017), re-analyzing this same dataset as part of the MicrobiomeHD project, instead used relative abundance (no rarefaction) throughout. We checked retention at Baxter's own 10,000-read depth on this specific reprocessed table and found it would discard 53.5% of Healthy samples and 42.5% of CRC samples -- because this MicrobiomeHD-hosted reprocessing has lower per-sample sequencing depth than the original paper's raw reads. We are choosing a lower rarefaction depth (4,800 reads) derived from this dataset's own rarefaction curves, retaining 150/172 H and 106/120 CRC, rather than importing the published 10,000-read threshold unchanged."
+  },
+  "alpha_diversity": {
+    "significance_level": 0.05,
+    "correction": "bh",
+    "metrics": {
+      "shannon": {"mean_group_a": 2.342, "mean_group_b": 2.353, "p": 0.9674, "q": 0.9674},
+      "observed": {"mean_group_a": 52.8, "mean_group_b": 58.6, "p": 0.00007846, "q": 0.0002}
+    },
+    "expectation_check_text": "A common prior is that CRC is associated with globally reduced gut microbial diversity. This dataset does not support that: Shannon diversity is essentially identical between groups (H=2.342, CRC=2.353, p=0.97), while observed genus richness is significantly HIGHER in CRC (H=52.8, CRC=58.6, p=7.8e-5). Read together, this pattern -- more genera detected but no change in the evenness-weighted Shannon index -- points to taxon-specific enrichment (a small number of additional, typically low-abundance genera appearing in CRC samples) rather than a broad restructuring or collapse of overall community diversity. The differential abundance page identifies which specific taxa drive this."
+  },
+  "beta_diversity": {
+    "metric": "bray_curtis",
+    "permanova": {"r2": 0.041, "p": 0.003, "permutations": 999, "dispersion": 0.39, "dispersion_p": 0.21},
+    "narrative_text": "PERMANOVA finds a statistically significant but small community-level separation between H and CRC (R2=0.041, p=0.003, 999 permutations). Betadisper is not significant (p=0.21), so this reflects a genuine location shift in community composition rather than unequal within-group spread. The small R2 alongside a real, independently-corroborated classification signal (Duvallet et al. 2017 report AUC~=0.77 for a Random Forest classifier on this same comparison) is consistent: groups differ reliably, but the community-level effect is modest, motivating a taxon-level look at differential abundance."
+  },
+  "differential_abundance": {
+    "prevalence_filter": 0.10,
+    "methods": ["aldex2", "ancombc", "wilcoxon"],
+    "genera": {
+      "Porphyromonas":        {"direction": "CRC", "q": 2.4e-8,  "p": 1.3e-10, "methods_agreeing": 3, "prevalence": 0.42, "flagged_as_significant": true},
+      "Peptostreptococcus":   {"direction": "CRC", "q": 3.0e-8,  "p": 5.0e-10, "methods_agreeing": 3, "prevalence": 0.38, "flagged_as_significant": true},
+      "Parvimonas":           {"direction": "CRC", "q": 3.0e-8,  "p": 3.5e-10, "methods_agreeing": 3, "prevalence": 0.40, "flagged_as_significant": true},
+      "Fusobacterium":        {"direction": "CRC", "q": 2.1e-6,  "p": 4.5e-8,  "methods_agreeing": 3, "prevalence": 0.55, "flagged_as_significant": true},
+      "Alloprevotella":       {"direction": "CRC", "q": 3.3e-4,  "p": 9.0e-6,  "methods_agreeing": 3, "prevalence": 0.61, "flagged_as_significant": true},
+      "Anaerococcus":         {"direction": "CRC", "q": 4.1e-4,  "p": 1.3e-5,  "methods_agreeing": 2, "prevalence": 0.33, "flagged_as_significant": true},
+      "Eikenella":            {"direction": "CRC", "q": 7.1e-3,  "p": 2.7e-4,  "methods_agreeing": 2, "prevalence": 0.11, "flagged_as_significant": true},
+      "Peptoniphilus":        {"direction": "CRC", "q": 9.5e-3,  "p": 4.2e-4,  "methods_agreeing": 2, "prevalence": 0.19, "flagged_as_significant": true},
+      "Collinsella":          {"direction": "CRC", "q": 0.027,   "p": 0.0015,  "methods_agreeing": 2, "prevalence": 0.71, "flagged_as_significant": true},
+      "Enterobacter":         {"direction": "CRC", "q": 0.031,   "p": 0.0020,  "methods_agreeing": 2, "prevalence": 0.28, "flagged_as_significant": true},
+      "Catenibacterium":      {"direction": "CRC", "q": 0.041,   "p": 0.0032,  "methods_agreeing": 2, "prevalence": 0.24, "flagged_as_significant": true},
+      "Gemella":              {"direction": "CRC", "q": 0.041,   "p": 0.0032,  "methods_agreeing": 2, "prevalence": 0.22, "flagged_as_significant": true},
+      "Staphylococcus":       {"direction": "CRC", "q": 0.213,   "p": 0.040,   "methods_agreeing": 1, "prevalence": 0.14, "flagged_as_significant": false},
+      "Victivallis":          {"direction": "CRC", "q": 0.087,   "p": 0.0097,  "methods_agreeing": 1, "prevalence": 0.09, "flagged_as_significant": false},
+      "Gemmiger":             {"direction": "H",   "q": 0.049,   "p": 0.0040,  "methods_agreeing": 2, "prevalence": 0.88, "flagged_as_significant": true},
+      "Haemophilus":          {"direction": "H",   "q": 0.031,   "p": 0.0019,  "methods_agreeing": 2, "prevalence": 0.41, "flagged_as_significant": true},
+      "Clostridium_XVIII":    {"direction": "H",   "q": 0.020,   "p": 0.00098, "methods_agreeing": 2, "prevalence": 0.63, "flagged_as_significant": true},
+      "Faecalibacterium":     {"direction": "H",   "q": 0.463,   "p": 0.170,   "methods_agreeing": 1, "prevalence": 0.96, "flagged_as_significant": false},
+      "Blautia":              {"direction": "CRC", "q": 0.927,   "p": 0.866,   "methods_agreeing": 0, "prevalence": 0.98, "flagged_as_significant": false},
+      "Bacteroides":          {"direction": "H",   "q": 0.512,   "p": 0.218,   "methods_agreeing": 0, "prevalence": 0.99, "flagged_as_significant": false}
+    },
+    "known_taxa_crosscheck": [
+      {"genus": "Fusobacterium", "literature_direction": "CRC", "this_run": "CRC", "status": "confirmed", "source": "Baxter2016; Duvallet2017; Yan2025"},
+      {"genus": "Porphyromonas", "literature_direction": "CRC", "this_run": "CRC", "status": "confirmed", "source": "Baxter2016; Duvallet2017"},
+      {"genus": "Faecalibacterium", "literature_direction": "H", "this_run": "H (n.s.)", "status": "directionally consistent, not significant in this cohort alone", "source": "Duvallet2017 cross-cohort aggregate"}
+    ]
+  },
+  "synthesis": {
+    "summary_text": "CRC did not show a global loss of within-sample diversity in this cohort -- richness trended slightly higher and Shannon diversity was flat -- but community composition differed modestly and reliably between groups (PERMANOVA R2=0.041, p=0.003, not explained by unequal dispersion). That modest community-level signal concentrates in a specific, reproducible set of oral-pathogen-associated genera (Fusobacterium, Porphyromonas, Peptostreptococcus, Parvimonas, all q<1e-5 and agreed on by all three DA methods), rather than reflecting a broad restructuring of the gut community. Together, alpha, beta, and differential abundance results describe the same underlying picture at three different scales: a targeted taxonomic shift, not a diffuse one.",
+    "literature_validation_text": "The four core taxa identified here (Fusobacterium, Porphyromonas, Peptostreptococcus, Parvimonas) replicate well-established prior findings rather than representing a novel discovery: they were the primary random-forest features in Baxter et al.'s own 2016 analysis of this exact cohort, were independently recovered by Duvallet et al.'s 2017 standardized re-analysis of the same data, and match the broader CRC meta-analysis literature (e.g. Yan et al. 2025) on oral-pathogen enrichment in CRC gut microbiomes.",
+    "next_steps": [
+      {"hypothesis": "The 4-genus signature (Fusobacterium/Porphyromonas/Peptostreptococcus/Parvimonas) generalizes beyond this single cohort's site/batch effects.", "experiment": "Re-run this exact pipeline on the other CRC cohorts already bundled in data/MicrobiomeHD/ (crc_zeller, crc_zackular, crc_xiang, crc_zhu, crc_zhao) and check whether the same 4 genera clear significance independently in each.", "uses_data_this_repo_has": true},
+      {"hypothesis": "The depth-imbalance pattern found in this cohort (Healthy samples skew lower-depth than CRC) is a Baxter-specific artifact, not a general feature of case-control CRC cohorts.", "experiment": "Recompute the H-vs-CRC depth distribution and floor-exclusion rates for the other CRC cohorts already bundled in data/MicrobiomeHD/ (crc_zeller, crc_zackular, crc_xiang, crc_zhu, crc_zhao) to check whether the same asymmetry recurs or is specific to this cohort's sequencing-run design.", "uses_data_this_repo_has": true}
+    ],
+    "limitations": [
+      "Genus-level 16S resolution cannot distinguish species- or strain-level effects -- the Fusobacterium signal here may not be uniform across all species/strains within that genus.",
+      "This is a cross-sectional case-control design; it can establish association, not causation, between these taxa and CRC status.",
+      "The 5,000-read QC floor excludes Healthy samples at nearly double the rate of CRC samples (29.1% vs 17.5%); while the chosen rarefaction depth partially mitigates this by retaining more samples than that floor alone would, the residual depth imbalance between arms is not fully eliminated and should be treated as a lingering, only partially-correctable confound."
+    ]
+  },
+  "decision_log": [
+    {"gate": "G1", "agent_proposal": "Use metadata DiseaseState column for grouping", "confidence": 0.99, "user_override": null, "override_reason": null},
+    {"gate": "G6", "agent_proposal": "Rarefy to 4,800 reads (curve-derived), not the published 10,000", "confidence": 0.83, "user_override": null, "override_reason": null}
+  ]
+}

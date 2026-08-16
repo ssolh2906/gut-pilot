@@ -30,6 +30,7 @@ export const initialState = {
   groupVersion: 0, // bumped when a sample's group is toggled in place (see actions.toggleSampleGroup)
   currentPage: "upload",
   unlocked: 0, // furthest reachable index into PAGES
+  autoProceed: false, // "proceed with recommended options" — see hooks/useAutoProceed.js
 
   // ---- backend wiring ----
   sessionId: null, // set once the backend has loaded a dataset (see UploadPage)
@@ -84,6 +85,9 @@ export function reducer(state, action) {
 
     case "REVEAL":
       return { ...state, revealed: { ...state.revealed, [action.id]: true } };
+
+    case "SET_AUTO_PROCEED":
+      return { ...state, autoProceed: action.value };
 
     case "ADD_LOG": {
       const entry = action.entry;
