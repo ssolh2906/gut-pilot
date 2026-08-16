@@ -90,9 +90,14 @@ export function getBetaMetric(sessionId) {
 // Not cheap — every message is a live Claude call (Paperclip tools available
 // but only used when the question calls for it). Only call from an explicit
 // send action, never automatically.
-export function sendChatMessage(sessionId, message, page) {
+// `clientState` is the frontend's own current selections (design/betaMetric/
+// alphaLevel/correction) — several gates (G1-G3, the live G8/G9 pickers)
+// have no backend apply_*/POST endpoint yet, so without this the chatbot
+// would answer from stale or absent backend state instead of what's
+// actually on the user's screen. See reasoning/chatbot.py's _client_state_block.
+export function sendChatMessage(sessionId, message, page, clientState) {
   return request(`/session/${sessionId}/chat`, {
     method: "POST",
-    body: JSON.stringify({ message, page }),
+    body: JSON.stringify({ message, page, client_state: clientState }),
   });
 }

@@ -39,6 +39,29 @@ const SendIcon = () => (
 
 let nextId = 1;
 
+// What the chatbot needs to know that only exists in the frontend reducer —
+// several gates (G1-G3, the live G8/G9 pickers) have no backend apply_*/POST
+// endpoint, so without sending this the chatbot answers from stale or
+// absent backend state instead of what the user is actually looking at.
+// See reasoning/chatbot.py's _client_state_block for the receiving side.
+function buildClientState(state) {
+  return {
+    design: {
+      groupSource: state.design.groupSource,
+      confirmed: state.design.confirmed,
+      singleCohort: state.design.singleCohort,
+      batchHandling: state.design.batchHandling,
+      pairing: state.design.pairing,
+      selectedColumn: state.studyDesignGate?.g1?.selected_column ?? null,
+      groupCounts: state.studyDesignGate?.g1?.group_counts ?? null,
+      batchStatus: state.studyDesignGate?.g2?.status ?? null,
+    },
+    betaMetric: state.betaMetric,
+    alphaLevel: state.alphaLevel,
+    correction: state.correction,
+  };
+}
+
 export default function FloatingChat() {
   const { state } = useAppState();
   const [open, setOpen] = useState(false);
@@ -76,7 +99,7 @@ export default function FloatingChat() {
     setMessages((m) => [...m, { id: nextId++, role: "me", text: t }]);
     setTyping(true);
     try {
-      const { reply, in_scope } = await sendChatMessage(state.sessionId, t, state.currentPage);
+      const { reply, in_scope } = await sendChatMessage(state.sessionId, t, state.currentPage, buildClientState(state));
       setMessages((m) => [...m, { id: nextId++, role: "ai", text: reply, inScope: in_scope !== false }]);
     } catch (e) {
       setMessages((m) => [...m, { id: nextId++, role: "ai", text: `Something went wrong reaching the reviewer: ${e.message}` }]);

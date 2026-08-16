@@ -207,12 +207,18 @@ def get_beta_metric(sid: str):
 class ChatBody(BaseModel):
     message: str
     page: str | None = None
+    # The frontend's own current reducer state (design/betaMetric/alphaLevel/
+    # correction) - several gates have no backend apply_*/POST endpoint yet,
+    # so this is how the chatbot learns what's actually on the user's screen
+    # rather than answering from stale/absent backend state. See
+    # reasoning/chatbot.py's _client_state_block.
+    client_state: dict | None = None
 
 
 @app.post("/api/session/{sid}/chat")
 def post_chat(sid: str, body: ChatBody):
     session = _require_session(sid)
-    return chat_session(session, body.message, page=body.page)
+    return chat_session(session, body.message, page=body.page, client_state=body.client_state)
 
 
 # G5 (QC depth floor) and G7 (rarefaction depth) below are Compute-only for

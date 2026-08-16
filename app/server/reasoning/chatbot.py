@@ -89,6 +89,21 @@ questions - happy to dig into the normalization strategy or what the \
 rarefaction depth means here instead." For every in-scope question, do NOT \
 include this tag anywhere in your reply.
 
+Important distinction, easy to get wrong: simply not having a specific \
+number, decision, or detail is NEVER grounds for the out-of-scope tag. The \
+tag is only for genuine topic mismatch (a different subject entirely), not \
+for "I don't have enough information yet." A question like "why did you \
+recommend X" when no recommendation has been made yet, or "what does the \
+data show for Y" when Y isn't in your context, is still in scope - answer \
+it honestly (say what hasn't been decided/computed yet and name the page \
+that will show it), just like you would for any other question you can \
+only partially answer. Reserve the tag strictly for questions about a \
+different subject altogether.
+
+This app's actual page names, in order, so you never invent or guess one: \
+Upload, Design, Raw QC, Normalize, Alpha, Beta, Differential, Summary. When \
+pointing the user to a page for more detail, use one of these exact names.
+
 Answer in 2-5 sentences of plain prose. You may use light formatting when it \
 genuinely improves clarity: **bold** for a key term or number, a short list \
 with lines starting "- " when listing 2-4 distinct items, and `backticks` \
@@ -120,9 +135,50 @@ def _session_context_block(session):
     return "\n".join(lines)
 
 
-def chat_session(session, message: str, page: str | None = None) -> dict:
+def _client_state_block(client_state: dict | None) -> str:
+    """Several gates (G1-G3 group/batch/pairing, and the live G8/G9 pickers)
+    have no backend apply_*/POST endpoint yet - see study_design.py's own
+    docstring on this - so `session` alone can be stale or simply never
+    know about them. The frontend sends its own current reducer state
+    alongside every chat message specifically to close that gap: this is
+    what's actually on the user's screen right now, which can be ahead of
+    (or even override) the decision log in _session_context_block.
+    """
+    if not client_state:
+        return ""
+    design = client_state.get("design") or {}
+    lines = [
+        "\nWhat the user is looking at on their own screen RIGHT NOW (this "
+        "can be ahead of the decision log above, or the only record of a "
+        "gate this backend doesn't persist yet - trust this over the log "
+        "above if the two ever disagree on the same gate):"
+    ]
+    if design.get("selectedColumn"):
+        counts = f", counts {design['groupCounts']}" if design.get("groupCounts") else ""
+        lines.append(f"- Group definition (G1): column `{design['selectedColumn']}`{counts}")
+    if design.get("singleCohort"):
+        lines.append("- Single-cohort mode is on: no grouping variable, group comparisons disabled")
+    if design.get("batchStatus"):
+        lines.append(f"- Batch status (G2): {design['batchStatus']}, handling set to {design.get('batchHandling')}")
+    if design.get("pairing"):
+        lines.append(f"- Sample pairing (G3): {design['pairing']}")
+    if client_state.get("betaMetric"):
+        lines.append(f"- Beta diversity metric currently selected (G9): {client_state['betaMetric']}")
+    if client_state.get("alphaLevel") is not None:
+        lines.append(f"- Significance level currently selected (G8): {client_state['alphaLevel']}")
+    if client_state.get("correction"):
+        lines.append(f"- Multiple-testing correction currently selected (G8): {client_state['correction']}")
+    return "\n".join(lines) if len(lines) > 1 else ""
+
+
+def chat_session(session, message: str, page: str | None = None, client_state: dict | None = None) -> dict:
     gate_id = _PAGE_TO_GATE.get(page, "G6")
-    base_prompt = _SYSTEM_PROMPT_BASE + "\n\n" + _session_context_block(session)
+    base_prompt = (
+        _SYSTEM_PROMPT_BASE
+        + "\n\n"
+        + _session_context_block(session)
+        + _client_state_block(client_state)
+    )
     system_prompt = build_system_prompt(base_prompt, gate_id)
 
     session.chat_history.append({"role": "user", "text": message})
