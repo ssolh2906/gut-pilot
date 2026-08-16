@@ -6,7 +6,7 @@
 import { createContext, useContext, useMemo, useReducer } from "react";
 import { reducer, initialState } from "./store";
 import { samples, PAGE_LABEL, FLOOR_DEFAULT } from "../lib/data";
-import { pageIndex } from "../lib/pages";
+import { PAGES, pageIndex } from "../lib/pages";
 
 const AppStateCtx = createContext(null);
 
@@ -28,6 +28,15 @@ export function AppStateProvider({ children }) {
       advanceTo: (id) => {
         dispatch({ type: "UNLOCK", id });
         dispatch({ type: "GO_PAGE", id });
+        // Auto-proceed drives forward navigation only. Left on past the
+        // last page, it would re-fire the moment any earlier (unlocked)
+        // page is revisited — its useAutoProceed effect runs again on
+        // mount and immediately advances again, which reads as pages
+        // turning by themselves when the user is just trying to look back.
+        // Reaching the end is the natural place to switch it back off.
+        if (pageIndex(id) === PAGES.length - 1) {
+          dispatch({ type: "SET_AUTO_PROCEED", value: false });
+        }
       },
 
       // ---- design gates (G1-G4) ----
