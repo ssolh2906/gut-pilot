@@ -307,6 +307,14 @@ export default function NormalizationPage() {
   }, [state.sessionId]);
 
   const hasPendingChange = gate && selected !== gate.strategy;
+  // True only when the *currently selected* strategy is the one that was
+  // actually confirmed, with nothing changed since. confirmedOnce alone
+  // isn't enough: it's a single flat flag that stays true even after the
+  // user switches to a different, not-yet-confirmed strategy (e.g. confirm
+  // CSS, then click back to Rarefaction without re-confirming) — gating the
+  // rarefaction curves purely on confirmedOnce would show them for a
+  // strategy that was never actually confirmed.
+  const strategyConfirmed = confirmedOnce && !hasPendingChange;
   // Enabled either the first time (nothing confirmed yet - accepting the
   // recommendation itself still needs an explicit click, same billed-call
   // reasoning as confirmedOnce above) or whenever the selection has since
@@ -315,13 +323,13 @@ export default function NormalizationPage() {
   // so accepting the default was permanently unclickable - confirmedOnce
   // never became true, and "Approve and compute" below (which requires it)
   // could never enable either.
-  const confirmDisabled = confirming || (confirmedOnce && !hasPendingChange);
+  const confirmDisabled = confirming || strategyConfirmed;
   const totalSamples = gate?.options?.[0]?.retention_preview?.total ?? rareSamples.length;
   // While rarefaction is selected, don't let the reviewer approve ahead of
   // the real per-sample data actually loading — the threshold and
   // retained/excluded numbers on screen would still be the pre-fetch
   // placeholders (empty `kept`), not real answers.
-  const canProceed = !!gate && confirmedOnce && !hasPendingChange && !(rare && (rareLoading || !rareData));
+  const canProceed = !!gate && strategyConfirmed && !(rare && (rareLoading || !rareData));
 
   function approve() {
     actions.addLog({
@@ -428,7 +436,8 @@ export default function NormalizationPage() {
               </div>
 
               <div className="page-foot mt-1">
-                <p className="hint">
+                <p className="hint flex items-center gap-2">
+                  {confirming && <Spinner />}
                   {confirming
                     ? "Confirming is a live Claude + Paperclip call, same as the recommendation itself — this takes 30–60 seconds too, not stuck."
                     : hasPendingChange
@@ -444,7 +453,7 @@ export default function NormalizationPage() {
             </div>
           </div>
 
-          {rare && (rareLoading || (!rareData && !rareError)) && (
+          {rare && strategyConfirmed && (rareLoading || (!rareData && !rareError)) && (
             <div className="block appear">
               <div className="block-body pad-t text-sm text-ink-2 flex items-center gap-2.5">
                 <Spinner />
@@ -453,7 +462,7 @@ export default function NormalizationPage() {
             </div>
           )}
 
-          {rare && rareError && (
+          {rare && strategyConfirmed && rareError && (
             <div className="gate-note warn flex items-center gap-2.5">
               <span>{rareError}</span>
               <button type="button" className="btn btn-sm" onClick={fetchRarefaction}>
@@ -462,7 +471,7 @@ export default function NormalizationPage() {
             </div>
           )}
 
-          {rare && rareData && (
+          {rare && strategyConfirmed && rareData && (
             <div className="agent">
               <div className="av">
                 <SparkleIcon />
@@ -501,7 +510,7 @@ export default function NormalizationPage() {
             </div>
           )}
 
-          {rare && rareData && (
+          {rare && strategyConfirmed && rareData && (
             <div className="rare-grid">
               <div className="block">
                 <div className="block-head">
