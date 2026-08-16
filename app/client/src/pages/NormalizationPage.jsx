@@ -439,7 +439,7 @@ export default function NormalizationPage() {
                 <p className="hint flex items-center gap-2">
                   {confirming && <Spinner />}
                   {confirming
-                    ? "Confirming is a live Claude + Paperclip call, same as the recommendation itself — this takes 30–60 seconds too, not stuck."
+                    ? "Confirming re-checks this choice and re-verifies its citations, just like the recommendation above did — expect another 30–60 seconds. Not stuck, just thorough."
                     : hasPendingChange
                       ? `Selecting ${STRATEGY_LABEL[selected]} — confirm to record the decision and check for effects on later gates.`
                       : confirmedOnce
