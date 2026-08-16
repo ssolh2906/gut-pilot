@@ -1,149 +1,98 @@
 #!/usr/bin/env python3
 """
-tests/eval/test_data_quality_checks.py -- runs the REAL ingestion code in
-app/server/compute/ against a small, deliberately corrupted OTU table to
-check whether two clear, common real-world data problems actually get
-caught today, not just whether a hand-authored RUN.json says they should be.
+tests/eval/test_data_quality_checks.py -- runs the REAL, currently-live
+ingestion code (app/server/compute/ingestion.py, the module main.py's
+/api/session endpoint actually calls) against a small, deliberately
+corrupted OTU table + metadata pair, to check whether two clear, common
+real-world data problems actually get caught today.
 
 This is a different kind of test from runner.py's manifest-driven checks:
 those grade an agent's *output* against ground truth; this one exercises
 actual ingestion functions against bad *input* and reports what really
-happens right now -- including gaps, not just passes.
+happens right now.
 
-Fixture: tests/eval/fixtures/data_quality/otu_table.duplicate_id_and_noninteger.tsv
-Two problems injected into an otherwise realistic 5-genus, 5-sample RDP-style
-OTU table:
-  1. DUPLICATE SAMPLE ID -- column header "2005650" appears twice in the raw
-     file (positions 1 and 4). A common real-world bug: two sequencing runs'
-     outputs concatenated without deduplicating overlapping re-sequenced
-     samples.
-  2. NON-INTEGER COUNT -- row 3 (Faecalibacterium), column "2003650" holds
-     12.5 instead of a whole read count. A common real-world bug: someone
-     accidentally handed the pipeline a relative-abundance or
-     already-CSS-normalized table instead of raw counts.
+History: this test originally targeted app/server/compute/p01_loading.py
+and found real gaps there. That module is now dead code (superseded by
+ingestion.py, confirmed via `grep -rn p01_loading app/` finding no live
+imports) -- verified live via `curl -F count_table=@...` against a running
+uvicorn instance on 2026-08-16 that ingestion.py actually does catch both
+injected problems today (see the two PASS checks below). Kept as an
+automated regression test so a future refactor can't silently reintroduce
+either gap without this failing.
 
-Running this the first time surfaced a THIRD thing worth knowing, more
-interesting than either injected problem: pandas' read_csv silently mangles
-duplicate column headers into "2005650" / "2005650.1" *before* any of this
-project's own code runs. So the raw file genuinely has the duplicate, but
-find_duplicate_sample_ids() only finds it if given the raw header (read
-before pandas touches it) -- if it's ever called on an already-loaded
-DataFrame's .columns instead, the duplicate is already invisible, silently.
-That distinction is the main thing this test checks for Problem 1.
+Fixtures (tests/eval/fixtures/data_quality/):
+  otu_table.duplicate_id_and_noninteger.tsv - 5-genus, 5-sample RDP-style
+    OTU table with two injected problems:
+      1. DUPLICATE SAMPLE ID -- "2005650" appears twice in the raw header
+         (positions 1 and 4). pandas' read_csv silently mangles the second
+         occurrence to "2005650.1" before any of this project's code runs
+         -- so it doesn't surface as an explicit "duplicate ID" hard-stop,
+         it surfaces as "2005650.1 has no metadata match" instead. Still a
+         HARD_STOP either way, which is what actually matters: the upload
+         is rejected, not silently accepted with corrupted sample identity.
+      2. NON-INTEGER COUNT -- Faecalibacterium x "2003650" = 12.5 instead
+         of a whole read count (e.g. an accidentally-already-normalized
+         table). Caught directly and explicitly by validate_counts().
+  metadata.duplicate_id_and_noninteger.txt - matching 4-row metadata (real
+    patient count; the OTU table's 5th column is the duplicate-ID artifact).
 
 Usage:
     python tests/eval/test_data_quality_checks.py
-Exit code 0 if every check that *should* catch a problem does; 1 otherwise.
-Also prints, explicitly, any problem that exists in the data but is not
-caught anywhere in the current pipeline -- that's a real gap, not a bug in
-this test.
+Exit code 0 if the pipeline's parse_report correctly HARD_STOPs with both
+expected reasons; 1 otherwise.
 """
-import csv
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-FIXTURE = Path(__file__).resolve().parent / "fixtures" / "data_quality" / "otu_table.duplicate_id_and_noninteger.tsv"
+FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "data_quality"
+OTU_TABLE = FIXTURE_DIR / "otu_table.duplicate_id_and_noninteger.tsv"
+METADATA = FIXTURE_DIR / "metadata.duplicate_id_and_noninteger.txt"
 
 sys.path.insert(0, str(REPO_ROOT / "app" / "server"))
-import pandas as pd  # noqa: E402
-from compute.p01_loading import load_count_table  # noqa: E402
-from compute.p03_qc_checks import check_non_negative_integers, find_duplicate_sample_ids  # noqa: E402
-
-DUPLICATE_SAMPLE_ID = "2005650"
-NON_INTEGER_CELL = ("k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales;"
-                     "f__Ruminococcaceae;g__Faecalibacterium;s__;d__denovo3", "2003650")
+from compute.ingestion import _load_from_layout  # noqa: E402
 
 
 class Check:
-    def __init__(self, name, passed, detail, is_gap_check=False):
+    def __init__(self, name, passed, detail):
         self.name = name
         self.passed = passed
         self.detail = detail
-        self.is_gap_check = is_gap_check
-
-
-def read_raw_header(path):
-    with open(path) as f:
-        return next(csv.reader(f, delimiter="\t"))[1:]  # drop the leading blank taxonomy-column header
 
 
 def run():
     results = []
+    ingestion_result = _load_from_layout(OTU_TABLE, METADATA)
+    pr = ingestion_result.parse_report
 
-    raw_header = read_raw_header(FIXTURE)
-    raw_df = pd.read_csv(FIXTURE, sep="\t", index_col=0)  # what pandas actually hands the rest of the code
-
-    # ---- Problem 1: duplicate sample ID ------------------------------------
     results.append(Check(
-        "fixture's true raw header contains the duplicate-ID problem",
-        raw_header.count(DUPLICATE_SAMPLE_ID) == 2,
-        f"raw header (pre-pandas): {raw_header}",
+        "pipeline HARD_STOPs on this input at all",
+        pr["status"] == "HARD_STOP",
+        f"status={pr['status']!r}, hard_stops={pr['hard_stops']}",
     ))
 
-    dupes_on_raw_header = find_duplicate_sample_ids(raw_header)
     results.append(Check(
-        "p03_qc_checks.find_duplicate_sample_ids() catches it, IF given the raw header",
-        dupes_on_raw_header == [DUPLICATE_SAMPLE_ID],
-        f"find_duplicate_sample_ids(raw_header) returned {dupes_on_raw_header}",
+        "Problem 2 (non-integer count, Faecalibacterium x 2003650 = 12.5) is caught",
+        "count table contains non-integer values" in pr["hard_stops"],
+        f"hard_stops={pr['hard_stops']}",
     ))
 
-    dupes_on_loaded_columns = find_duplicate_sample_ids(raw_df.columns.tolist())
+    unmatched = pr["metadata"]["unmatched_count_table_ids"]
     results.append(Check(
-        "GAP CHECK: does the same function still catch it if called on the already-pandas-parsed columns instead?",
-        dupes_on_loaded_columns == [DUPLICATE_SAMPLE_ID],
-        f"pandas silently renamed the columns to {raw_df.columns.tolist()} during read_csv -- "
-        f"the exact duplicate is gone before any of this project's code runs, so "
-        f"find_duplicate_sample_ids(df.columns) returns {dupes_on_loaded_columns}, missing it entirely. "
-        f"The check is correct; where it's called from matters. It must run against the raw file "
-        f"header (e.g. via csv.reader, as this test does) BEFORE pd.read_csv, not after.",
-        is_gap_check=True,
+        "Problem 1 (duplicate sample ID, mangled to '2005650.1') surfaces as an unmatched-ID hard-stop",
+        unmatched == ["2005650.1"],
+        f"unmatched_count_table_ids={unmatched} (pandas renamed the true duplicate '2005650' to "
+        f"'2005650.1' during read_csv before this code ever ran; it shows up here as a metadata "
+        f"mismatch rather than an explicit duplicate-ID message, but it does still block the upload)",
     ))
 
-    loaded = load_count_table(str(FIXTURE))
     results.append(Check(
-        "GAP CHECK: does load_count_table() itself warn about the mangled '.1'-suffixed sample ID?",
-        False,  # it doesn't -- no such check exists in load_count_table today
-        f"load_count_table() output columns: {loaded.columns.tolist()} -- '2005650.1' silently exists "
-        f"as a distinct sample now. Downstream, this ID won't match anything in metadata.txt (which only "
-        f"has '2005650'), so that sample will fail to join later -- but it'll look like ordinary sample "
-        f"attrition, not a data-corruption symptom, unless something flags '.N'-suffixed IDs specifically.",
-        is_gap_check=True,
-    ))
-
-    # ---- Problem 2: non-integer count --------------------------------------
-    genus, sample = NON_INTEGER_CELL
-    raw_cell_value = raw_df.loc[genus, sample]
-    cell_is_non_integer = float(raw_cell_value) != int(raw_cell_value)
-    results.append(Check(
-        "fixture actually contains the non-integer-count problem",
-        cell_is_non_integer,
-        f"{genus_short(genus)} x {sample} = {raw_cell_value}",
-    ))
-
-    all_ints = check_non_negative_integers(raw_df)
-    results.append(Check(
-        "p03_qc_checks.check_non_negative_integers() catches it",
-        all_ints is False,
-        f"returned {all_ints} (expected False)",
-    ))
-
-    loaded_cell = loaded.loc["Faecalibacterium", sample] if "Faecalibacterium" in loaded.index else None
-    non_integer_survives_loading = loaded_cell is not None and float(loaded_cell) != int(loaded_cell)
-    results.append(Check(
-        "GAP CHECK: does load_count_table() itself reject/flag the non-integer value?",
-        not non_integer_survives_loading,
-        f"load_count_table() output has Faecalibacterium x {sample} = {loaded_cell} -- "
-        f"loaded and genus-summed with no type check, no error, no warning. A pre-normalized "
-        f"or relative-abundance table fed in by mistake would pass through completely silently.",
-        is_gap_check=True,
+        "n_samples reflects all 5 raw columns (mangled duplicate not silently dropped)",
+        ingestion_result.raw_counts.shape[1] == 5,
+        f"raw_counts.shape={ingestion_result.raw_counts.shape}",
     ))
 
     return results
-
-
-def genus_short(taxonomy):
-    return taxonomy.split(";")[-3].replace("g__", "")
 
 
 def main():
@@ -155,28 +104,15 @@ def main():
         marker = "PASS" if r.passed else "FAIL"
         print(f"  [{marker}] {r.name}\n         {r.detail}")
 
-    gaps = [r for r in results if r.is_gap_check and not r.passed]
-    print("\n" + "-" * 78)
-    if gaps:
-        print(f"{len(gaps)} real gap(s) found in the CURRENT pipeline (not this test's fault):")
-        for g in gaps:
-            print(f"  - {g.name}")
-        print(
-            "\nBoth detector functions (find_duplicate_sample_ids, check_non_negative_integers) "
-            "already exist in app/server/compute/p03_qc_checks.py and work correctly when given "
-            "the right input. Neither is currently invoked anywhere in the ingestion path, and "
-            "find_duplicate_sample_ids specifically must run on the RAW file header (before "
-            "pd.read_csv mangles duplicates away), not on a DataFrame's .columns after loading. "
-            "Concrete fix: read the raw header once for duplicate-checking purposes, call both "
-            "checks right after, and surface the results in the ingestion section of RUN.json "
-            "before the table reaches any later pipeline stage."
-        )
+    print("-" * 78)
+    if all(r.passed for r in results):
+        print("Both injected problems are caught by the live ingestion pipeline (HARD_STOP).")
     else:
-        print("No gaps -- every injected problem is caught somewhere in the current pipeline.")
+        print("REGRESSION: at least one previously-verified check no longer passes -- "
+              "see FAILs above before treating current ingestion.py as safe.")
     print("-" * 78)
 
-    hard_fail = any(not r.passed for r in results if not r.is_gap_check)
-    sys.exit(1 if hard_fail else 0)
+    sys.exit(0 if all(r.passed for r in results) else 1)
 
 
 if __name__ == "__main__":

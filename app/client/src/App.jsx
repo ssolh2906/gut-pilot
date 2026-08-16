@@ -12,7 +12,6 @@ import DecisionLogDrawer, { DecisionLogRail } from "./components/DecisionLog";
 import FloatingChat from "./components/FloatingChat";
 import { AppStateProvider, useAppState } from "./state/AppStateContext";
 import { PAGES } from "./lib/pages";
-import { samples } from "./lib/data";
 
 const BrandMark = () => (
   <svg viewBox="0 0 26 26" fill="none" aria-hidden="true" width="26" height="26">
@@ -107,7 +106,13 @@ function AppShell() {
           <div className="ml-auto flex items-center gap-2">
             <div className="ds-chip">
               <i />
-              Baxter CRC 16S <span className="font-mono">· {samples.length} samples</span>
+              {state.sessionMeta ? (
+                <>
+                  {state.sessionMeta.label} <span className="font-mono">· {state.sessionMeta.n_samples} samples</span>
+                </>
+              ) : (
+                "No dataset loaded yet"
+              )}
             </div>
             <button type="button" className="icon-btn" aria-label="Toggle colour theme" title="Toggle light and dark" onClick={toggleTheme}>
               <ThemeIcon />

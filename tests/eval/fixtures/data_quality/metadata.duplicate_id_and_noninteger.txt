@@ -1,0 +1,5 @@
+sample_id	DiseaseState
+2005650	H
+2003650	CRC
+2143517	H
+2087650	CRC

@@ -20,9 +20,12 @@ from .p01_metadata import load_metadata
 from .p02_taxonomy import parse_lineage
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-_RAW_DATA_DIR = _REPO_ROOT / "data" / "raw_data"
+# Bundled MicrobiomeHD tarballs live in data/MicrobiomeHD/ (see data/dataset_info.yaml),
+# not data/raw_data/ (which is an empty placeholder dir) -- load_dataset() would
+# FileNotFoundError on every call otherwise, since nothing ever populates raw_data/.
+_RAW_DATA_DIR = _REPO_ROOT / "data" / "MicrobiomeHD"
 _EXTRACTED_DIR = _RAW_DATA_DIR / "_extracted"
-_UPLOADS_DIR = _RAW_DATA_DIR / "_uploads"
+_UPLOADS_DIR = _REPO_ROOT / "data" / "raw_data" / "_uploads"
 
 _RANK_ORDER = ["phylum", "class", "order", "family", "genus"]
 

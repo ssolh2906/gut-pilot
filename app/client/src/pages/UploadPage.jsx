@@ -72,6 +72,11 @@ export default function UploadPage() {
             return;
           }
           actions.setSessionId(session.session_id);
+          actions.setSessionMeta({
+            label: file ? file.name.replace(/\.(tar\.gz|tgz)$/i, "") : "crc_baxter",
+            n_samples: session.n_samples,
+            n_features: session.n_features,
+          });
 
           const pr = session.parse_report;
           if (pr && pr.status === "HARD_STOP") {

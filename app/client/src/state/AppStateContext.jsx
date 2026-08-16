@@ -107,6 +107,7 @@ export function AppStateProvider({ children }) {
 
       // ---- backend wiring ----
       setSessionId: (id) => dispatch({ type: "SET_SESSION_ID", id }),
+      setSessionMeta: (meta) => dispatch({ type: "SET_SESSION_META", meta }),
       setStudyDesignGate: (data) => dispatch({ type: "SET_STUDY_DESIGN_GATE", data }),
       setG4Gate: (data) => dispatch({ type: "SET_G4_GATE", data }),
       setG6Gate: (data) => dispatch({ type: "SET_G6_GATE", data }),

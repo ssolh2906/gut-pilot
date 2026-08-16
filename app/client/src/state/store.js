@@ -34,6 +34,9 @@ export const initialState = {
 
   // ---- backend wiring ----
   sessionId: null, // set once the backend has loaded a dataset (see UploadPage)
+  sessionMeta: null, // { label, n_samples, n_features } for the masthead chip —
+  // real counts from the /api/session response, not the mock's hardcoded 24.
+
   studyDesignGate: null, // cached GET .../design/study-design response (G1+G2+G3
   // combined) — same caching rationale as g4Gate/g6Gate below.
   g4Gate: null, // cached GET/POST .../design/rank response — same caching
@@ -102,6 +105,8 @@ export function reducer(state, action) {
 
     case "SET_SESSION_ID":
       return { ...state, sessionId: action.id };
+    case "SET_SESSION_META":
+      return { ...state, sessionMeta: action.meta };
     case "SET_STUDY_DESIGN_GATE":
       return { ...state, studyDesignGate: action.data };
     case "SET_G4_GATE":
