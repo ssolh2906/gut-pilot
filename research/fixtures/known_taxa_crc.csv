@@ -1,0 +1,7 @@
+taxon_genus,literature_direction,citation_key,note
+Fusobacterium,CRC,thomas2019,Cross-cohort metagenomic CRC signature; also linked to choline degradation pathway
+Parvimonas,CRC,thomas2019,Cross-cohort metagenomic CRC signature
+Peptostreptococcus,CRC,thomas2019,Cross-cohort metagenomic CRC signature
+Porphyromonas,CRC,thomas2019,Cross-cohort metagenomic CRC signature
+Roseburia,H,duvallet2017,Meta-analysis across CRC studies; butyrate producer depleted with disease
+Faecalibacterium,H,duvallet2017,Meta-analysis across CRC studies; butyrate producer depleted with disease

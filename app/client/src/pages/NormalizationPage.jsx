@@ -267,16 +267,25 @@ export default function NormalizationPage() {
     }
   }
 
-  async function confirmStrategy() {
-    if (!state.sessionId || !selected) return;
+  // Takes an explicit strategy rather than always trusting the `selected`
+  // closure: the auto-proceed effect below fires the instant `gate` first
+  // loads, in the same tick as fetchGate's own setSelected(data.strategy) -
+  // batched React state updates aren't guaranteed to already be visible to
+  // a sibling effect's closure at that exact point, and a stale/null
+  // `selected` here previously sent an invalid strategy to the backend
+  // (400). Passing gate.strategy explicitly sidesteps the race instead of
+  // depending on render timing.
+  async function confirmStrategy(strategyOverride) {
+    const strategy = strategyOverride ?? selected;
+    if (!state.sessionId || !strategy) return;
     setConfirming(true);
     setError(null);
     try {
-      const data = await setNormalizeStrategy(state.sessionId, selected);
+      const data = await setNormalizeStrategy(state.sessionId, strategy);
       actions.setG6Gate(data);
       // Keeps state.normStrategy/betaMetric (R2) in sync for pages that
       // still read the reducer directly (e.g. the beta metric default).
-      actions.setNormStrategy(selected);
+      actions.setNormStrategy(strategy);
       setCascades(data.cascades);
       setConfirmedOnce(true);
       actions.addLog({
@@ -284,7 +293,7 @@ export default function NormalizationPage() {
         page: "rarefy",
         human: true,
         src: "human-in-the-loop",
-        text: `Normalization strategy set to ${STRATEGY_LABEL[selected]}.`,
+        text: `Normalization strategy set to ${STRATEGY_LABEL[strategy]}.`,
       });
     } catch (e) {
       setError(e.message);
@@ -305,6 +314,21 @@ export default function NormalizationPage() {
     fetchGate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.sessionId]);
+
+  // Auto-proceed's own "accept the recommendation and continue" promise
+  // covers the WHOLE page, not just the final approve button below - without
+  // this, turning auto-proceed on would silently strand the run here
+  // forever, since confirmStrategy (a separate real Claude call, gated on
+  // purpose) never fires on its own the way it does when a human clicks
+  // through. Fires once per gate load, same StrictMode-safe ref-guard
+  // pattern as the fetch effect above.
+  const autoConfirmedRef = useRef(false);
+  useEffect(() => {
+    if (!state.autoProceed || !gate || autoConfirmedRef.current || confirmedOnce || confirming) return;
+    autoConfirmedRef.current = true;
+    confirmStrategy(gate.strategy);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.autoProceed, gate, confirmedOnce, confirming]);
 
   const hasPendingChange = gate && selected !== gate.strategy;
   // Enabled either the first time (nothing confirmed yet - accepting the
@@ -437,7 +461,7 @@ export default function NormalizationPage() {
                         ? "This strategy is confirmed and logged."
                         : `Reviewer recommends ${STRATEGY_LABEL[selected]} — confirm to record the decision and check for effects on later gates.`}
                 </p>
-                <button type="button" className="btn btn-primary btn-sm" disabled={confirmDisabled} onClick={confirmStrategy}>
+                <button type="button" className="btn btn-primary btn-sm" disabled={confirmDisabled} onClick={() => confirmStrategy()}>
                   {confirming ? "Confirming…" : "Confirm strategy"}
                 </button>
               </div>
