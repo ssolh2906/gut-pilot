@@ -113,7 +113,7 @@ The pipeline should not blindly run three methods and treat majority vote as gro
 **Primary analysis:**
 
 - Prefer **ANCOM-BC2** when covariate adjustment, multiple groups, repeated measures, or explicit compositional bias correction are required.
-- Use **ALDEx2** as a conservative compositional sensitivity analysis when the study design can be represented appropriately.
+- Use **ALDEx2** as a conservative compositional sensitivity analysis when the study design can be represented appropriately [Fernandes2014].
 - Use a simple rank-based analysis as a transparent sensitivity analysis only when compatible with the design. For independent two-group data this may be Wilcoxon rank-sum; for paired/repeated data use the corresponding paired or subject-aware analysis.
 
 The reason to use multiple valid approaches is **robustness to modeling choice**, not to create an artificial voting theorem. Nearing et al. showed that DA tools can produce substantially different sets of findings and recommended consensus/multi-method reporting; later benchmarks reinforce that method behavior depends on sparsity, confounding, effect structure, and the target estimand [Nearing2022] [Wirbel2024].
@@ -238,6 +238,7 @@ If no taxa survive correction, do not call the analysis a failure. State whether
 ## Evidence keys for this step
 
 - `[Nearing2022]` Nearing JT et al. *Microbiome differential abundance methods produce different results across 38 datasets.* Nature Communications 13, 342 (2022). doi:10.1038/s41467-022-28034-z.
+- `[Fernandes2014]` Fernandes AD et al. *Unifying the analysis of high-throughput sequencing datasets: characterizing RNA-seq, 16S rRNA gene sequencing and selective growth experiments by compositional data analysis.* Microbiome 2, 15 (2014). PMID 24910773. doi:10.1186/2049-2618-2-15. (ALDEx2)
 - `[LinPeddada2024]` Lin H, Peddada SD. *Multigroup analysis of compositions of microbiomes with covariate adjustments and repeated measures.* Nature Methods 21, 83–91 (2024). doi:10.1038/s41592-023-02092-7. (ANCOM-BC2)
 - `[Wirbel2024]` Wirbel J et al. *A realistic benchmark for differential abundance testing and confounder adjustment in human microbiome studies.* Genome Biology (2024). doi:10.1186/s13059-024-03390-9.
 - `[Pelto2025]` Pelto J et al. *Elementary methods provide more replicable results in microbial differential abundance analysis.* Briefings in Bioinformatics (2025). doi:10.1093/bib/bbaf130.

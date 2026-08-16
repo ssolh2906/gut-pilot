@@ -175,7 +175,27 @@ def build_study_design_response(session):
             stats = batch_association_stats(crosstab)
             g2_diagnostics.append({"batch_column": batch_col, **stats})
 
-    g3_result = check_sample_independence(sample_ids, session.metadata)
+    # check_sample_independence (compute/p02_design.py) is the mechanical
+    # duplicate check; deciding WHICH column is the subject identifier is
+    # this Reasoning module's job (classify_metadata_columns's own role
+    # already reflects that same layer split for G1/G2's candidates).
+    subject_cols = [c for c, info in classified.items() if info["role"] == "likely_subject"]
+    if subject_cols:
+        subject_col = subject_cols[0]
+        subjects = session.metadata.loc[session.metadata.index.isin(sample_ids), subject_col]
+        indep = check_sample_independence(sample_ids, session.metadata, subject_col)
+        g3_result = {
+            "subject_id_variable": subject_col,
+            "n_subjects": int(subjects.nunique()),
+            "n_samples": len(sample_ids),
+            "repeated_subjects": len(indep["repeated_subjects"]),
+            "pairing": "independent" if indep["pairing"] == "independent" else "paired_or_clustered",
+        }
+    else:
+        g3_result = {
+            "subject_id_variable": None, "n_subjects": len(sample_ids),
+            "n_samples": len(sample_ids), "repeated_subjects": 0, "pairing": "independent",
+        }
 
     reasoning = _run_reasoning(g1_candidates, g2_candidates, g2_diagnostics, g3_result)
 

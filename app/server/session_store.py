@@ -27,6 +27,7 @@ class Session:
     threshold: int = 4200  # rarefaction depth (G7)
     norm_strategy: str = "rarefy"  # "rarefy" | "css" | "clr"
     beta_metric: str = "bray"  # "bray" | "jaccard" | "aitchison"
+    normalized_table: pd.DataFrame | None = None  # css/clr output; None for rarefy
     log: list = field(default_factory=list)
     chat_history: list = field(default_factory=list)  # [{"role": "user"|"assistant", "text": str}]
 

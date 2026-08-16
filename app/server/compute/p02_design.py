@@ -87,34 +87,21 @@ def batch_association_stats(crosstab: pd.DataFrame) -> dict:
     return {"cramers_v": cramers_v, "fisher_exact_p": fisher_p}
 
 
-def check_sample_independence(sample_ids: list[str], metadata: pd.DataFrame) -> dict:
-    """Check whether samples look independent or paired/repeated-measures (G3).
+def check_sample_independence(sample_ids: list[str], metadata: pd.DataFrame, subject_column: str) -> dict:
+    """Check for repeated-subject (paired/repeated-measures) structure (G3).
+    Purely mechanical duplicate check — which metadata column identifies a subject,
+    and what to do with the result, is a judgment for the reasoning/AI-agent layer
+    (see classify_metadata_columns above, which finds the candidate).
 
-    Searches metadata for a subject/patient/donor-like column via
-    classify_metadata_columns. If none exists, each sample is necessarily
-    its own subject (independent by construction - there's no subject-level
-    column to check repeats against). If one exists, counts actual repeats
-    rather than assuming.
-
-    Input: list of sample_id, metadata DataFrame (indexed by sample_id)
-    Output: {"subject_id_variable": str|None, "n_subjects": int, "n_samples": int,
-             "repeated_subjects": int, "pairing": "independent"|"paired_or_clustered"}
+    Input: list of sample_id, metadata DataFrame (indexed by sample_id), name of the
+    column in metadata that identifies a subject
+    Output: {"pairing": "independent"|"paired",
+             "repeated_subjects": {subject_id: [sample_id, ...]}} (empty if independent)
     """
-    classified = classify_metadata_columns(metadata)
-    subject_cols = [c for c, info in classified.items() if info["role"] == "likely_subject"]
-
-    if not subject_cols:
-        return {
-            "subject_id_variable": None, "n_subjects": len(sample_ids),
-            "n_samples": len(sample_ids), "repeated_subjects": 0, "pairing": "independent",
-        }
-
-    subject_col = subject_cols[0]
-    subjects = metadata.loc[metadata.index.isin(sample_ids), subject_col]
+    subjects = metadata.loc[sample_ids, subject_column]
     counts = subjects.value_counts()
-    repeated = int((counts > 1).sum())
-    return {
-        "subject_id_variable": subject_col, "n_subjects": int(counts.shape[0]),
-        "n_samples": len(sample_ids), "repeated_subjects": repeated,
-        "pairing": "independent" if repeated == 0 else "paired_or_clustered",
-    }
+    repeated = counts[counts > 1].index
+    if len(repeated) == 0:
+        return {"pairing": "independent", "repeated_subjects": {}}
+    repeated_subjects = {str(s): subjects[subjects == s].index.tolist() for s in repeated}
+    return {"pairing": "paired", "repeated_subjects": repeated_subjects}
