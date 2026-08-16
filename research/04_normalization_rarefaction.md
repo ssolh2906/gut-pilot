@@ -104,7 +104,8 @@ vs CLR."
     solve the same problem as equal-depth diversity standardization or
     compositional log-ratio analysis. Select it only when a downstream
     method specifically calls for it or as an explicitly requested
-    sensitivity analysis.
+    sensitivity analysis. When the user chooses CSS, cite
+    Paulson et al. (2013), doi:10.1038/nmeth.2658.
 
 ### What the wet-lab user should see for G6
 
@@ -473,6 +474,9 @@ normalization:
     al. *Microbiome differential abundance methods produce different
     results across 38 datasets.* Nat Commun. 2022;13:342.
     doi:10.1038/s41467-022-28034-z.
+-   **Paulson et al. 2013:** Paulson JN, Stine OC, Bravo HC, Pop M.
+    *Differential abundance analysis for microbial marker-gene surveys.*
+    Nat Methods. 2013;10:1200--1202. doi:10.1038/nmeth.2658.
 -   **QIIME 2:** current amplicon documentation uses alpha-rarefaction
     curves to evaluate diversity versus sampling depth and explicitly
     emphasizes examining both curve leveling and sample retention.
