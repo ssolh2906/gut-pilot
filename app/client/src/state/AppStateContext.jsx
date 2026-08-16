@@ -31,7 +31,19 @@ export function AppStateProvider({ children }) {
       },
 
       // ---- design gates (G1-G4) ----
-      setGroupSource: (source) => dispatch({ type: "SET_GROUP_SOURCE", source }),
+      setGroupSource: (source) => {
+        // Switching back to "inferred" should undo any manual toggles, not
+        // just relabel the current (possibly hand-edited) groups. The ID
+        // prefix *is* the inferred rule, so resetting is just re-deriving
+        // group from id rather than needing a separate stored "original".
+        if (source === "inferred") {
+          samples.forEach((s) => {
+            s.group = s.id[0];
+          });
+          dispatch({ type: "BUMP_GROUP_VERSION" });
+        }
+        dispatch({ type: "SET_GROUP_SOURCE", source });
+      },
       toggleSampleGroup: (id) => {
         const s = samples.find((x) => x.id === id);
         if (!s) return;
