@@ -104,6 +104,10 @@ export function AppStateProvider({ children }) {
           });
         }
       },
+
+      // ---- backend wiring ----
+      setSessionId: (id) => dispatch({ type: "SET_SESSION_ID", id }),
+      setG6Gate: (data) => dispatch({ type: "SET_G6_GATE", data }),
     };
   }, []);
 
