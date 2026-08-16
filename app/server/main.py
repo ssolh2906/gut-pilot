@@ -6,6 +6,8 @@ dataset until real ingestion lands. See docs/gates.md for the full gate
 contract this is built against.
 """
 
+import math
+
 import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +16,7 @@ from pydantic import BaseModel
 from compute.fixtures import make_fixture_count_table
 from compute.p03_qc_checks import depth_summary, flag_below_floor
 from compute.p04_rarefaction import build_rarefaction_curve, samples_above_depth
+from compute.p05_alpha_diversity import alpha_group_test, compute_alpha_diversity
 from reasoning.g6_normalization import apply_g6_strategy, build_g6_response
 from session_store import create_session, get_session
 
@@ -112,3 +115,41 @@ def get_rarefaction_curves(sid: str, n_steps: int = 12, n_iter: int = 3):
         for sample_id in df.columns
     }
     return {"gate_id": "G7", "curves": curves}
+
+
+# Alpha diversity (Alpha page) - Compute-only, same reasoning as G5/G7 above.
+# Grouping isn't real metadata yet (no G1 group field on Session) - it falls
+# back to the sample_id prefix before "-" (e.g. "H-01" -> "H"), which is the
+# convention the fixture data itself follows.
+
+
+@app.get("/api/session/{sid}/alpha")
+def get_alpha_diversity(sid: str, depth: int | None = None, n_iterations: int = 20):
+    session = _require_session(sid)
+    threshold = session.threshold if depth is None else depth
+    rng = np.random.default_rng(0)
+    raw = compute_alpha_diversity(session.count_table, threshold, n_iterations, rng)
+
+    groups: dict[str, list[str]] = {}
+    for sample_id in session.count_table.columns:
+        groups.setdefault(sample_id.split("-")[0], []).append(sample_id)
+
+    group_tests = {}
+    if len(groups) == 2:
+        for metric in raw.index:
+            values_by_group = {g: raw.loc[metric, ids].dropna().tolist() for g, ids in groups.items()}
+            if all(values_by_group.values()):
+                group_tests[metric] = alpha_group_test(values_by_group)
+
+    metrics = {
+        sample: {
+            metric: (None if math.isnan(v := raw.loc[metric, sample]) else float(v))
+            for metric in raw.index
+        }
+        for sample in raw.columns
+    }
+
+    return {
+        "depth": threshold, "n_iterations": n_iterations,
+        "metrics": metrics, "groups": groups, "group_tests": group_tests,
+    }
