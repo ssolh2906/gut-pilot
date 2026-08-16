@@ -66,7 +66,7 @@ def jaccard_matrix(df: pd.DataFrame) -> pd.DataFrame:
 
 def aitchison_matrix(df: pd.DataFrame) -> pd.DataFrame:
     """Aitchison distance (log-ratio geometry). Input: count df. Output: symmetric distance df (fake)."""
-    # TODO: no direct library function — euclidean distance on normalization.clr_transform(df) output.
+    # TODO: no direct library function — euclidean distance on p04_normalization.clr_transform(df) output.
     # Only meaningful when G6 normalization = CLR, not on rarefied counts.
     return _fake_symmetric_matrix(df.columns.tolist(), seed=3)
 

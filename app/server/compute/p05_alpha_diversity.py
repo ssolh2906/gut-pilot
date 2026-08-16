@@ -2,9 +2,9 @@
 
 import numpy as np
 import pandas as pd
-from scipy.stats import entropy
+from scipy.stats import entropy, mannwhitneyu
 
-from .rarefaction import rarefy_once
+from .p04_rarefaction import rarefy_once
 
 
 def observed_taxa(counts: np.ndarray) -> int:
@@ -82,3 +82,14 @@ def compute_alpha_diversity(
             results[m][sample] = np.mean(per_iter[m]) if per_iter[m] else np.nan
 
     return pd.DataFrame(results).T
+
+
+def alpha_group_test(values_by_group: dict[str, list[float]]) -> dict:
+    """Two-group significance test for one alpha diversity metric (G8).
+
+    Input: {group_label: [values, ...]} — exactly two groups
+    Output: {"p_value": float, "test": "mannwhitneyu"}
+    """
+    groups = list(values_by_group.values())
+    _, p = mannwhitneyu(groups[0], groups[1])
+    return {"p_value": float(p), "test": "mannwhitneyu"}

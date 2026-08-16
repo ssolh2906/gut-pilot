@@ -37,3 +37,14 @@ def build_rarefaction_curve(
         if observed:
             curve[depth] = float(np.mean(observed))
     return curve
+
+
+def samples_above_depth(depths: dict[str, int], threshold: int) -> dict:
+    """Split samples into retained/excluded by a depth threshold (G7).
+
+    Input: {sample_id: depth}, threshold
+    Output: {"retained": [sample_id, ...], "excluded": [sample_id, ...]}
+    """
+    retained = [s for s, d in depths.items() if d >= threshold]
+    excluded = [s for s, d in depths.items() if d < threshold]
+    return {"retained": retained, "excluded": excluded}
