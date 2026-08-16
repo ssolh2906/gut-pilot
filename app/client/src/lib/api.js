@@ -39,6 +39,12 @@ export async function createSession(file, dataset) {
   return request(`/session${qs}`, { method: "POST" });
 }
 
+// Cheap — compute-only (G5), no model call. Real per-sample depth from
+// whatever dataset createSession() actually loaded.
+export function getQcDepth(sessionId) {
+  return request(`/session/${sessionId}/qc/depth`);
+}
+
 // Not cheap — a live Claude + Paperclip call (tens of seconds, real tokens).
 // Only call this from an explicit user action, never automatically.
 export function getNormalizeStrategy(sessionId) {

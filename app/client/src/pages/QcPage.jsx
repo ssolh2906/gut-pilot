@@ -3,11 +3,16 @@
 // floor) then a sanity checklist, matching the mock's RENDER_ON_REVEAL /
 // LOG_ON_REVEAL / PAGE_REVEALS wiring for this page (revealed in order,
 // each logging a decision-log entry, continue button gated on both).
+//
+// Real per-sample depth comes from GET .../qc/depth (compute-only, G5, no
+// model call) whenever a real session exists. Falls back to the static
+// lib/data.js mock otherwise (fixture dataset, or before a session loads)
+// so this page still renders something sensible in either case.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppState } from "../state/AppStateContext";
 import { useAutoProceed } from "../hooks/useAutoProceed";
-import { belowFloor } from "../state/selectors";
-import { samples, totalSeq, meanDepth, minDepth, maxDepth, fmt, groupName, groupColor } from "../lib/data";
+import { getQcDepth } from "../lib/api";
+import { samples as mockSamples, totalSeq as mockTotalSeq, meanDepth as mockMeanDepth, minDepth as mockMinDepth, maxDepth as mockMaxDepth, fmt, groupName, groupColor } from "../lib/data";
 import Reveal from "../components/Reveal";
 import ChartTools from "../components/ChartTools";
 import BarChart from "../components/charts/BarChart";
@@ -33,22 +38,63 @@ const WarnIcon = () => (
   </svg>
 );
 
+// `useQcData` — fetches real per-sample depth (+ best-effort group label)
+// for the current session. `null` while loading/no session, in which case
+// callers fall back to the static mock so the page never renders empty.
+function useQcData(sessionId) {
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    if (!sessionId) {
+      setData(null);
+      return;
+    }
+    let cancelled = false;
+    getQcDepth(sessionId)
+      .then((res) => {
+        if (cancelled) return;
+        setData({
+          samples: res.bars.map((b) => ({ id: b.sample_id, depth: b.depth, group: b.group })),
+          stats: {
+            nSamples: res.stats.n_samples,
+            nFeatures: res.n_features,
+            totalReads: res.stats.total_reads,
+            meanDepth: Math.round(res.stats.mean_depth),
+            minDepth: res.stats.min_depth,
+            maxDepth: res.stats.max_depth,
+          },
+        });
+      })
+      .catch(() => {
+        // Backend down/session gone — QC still renders via the mock fallback
+        // below rather than an empty page; the real error surfaces on the
+        // Upload page already, since that's where the request that matters
+        // (createSession) happens.
+        if (!cancelled) setData(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
+  return data;
+}
+
 // Ported from the mock's floorNote() — the reviewer's read of the current
-// floor setting. Kept here rather than in selectors.js since it's QC-page
-// display text, not a value other pages/charts derive from.
-function floorNote(state) {
-  const below = belowFloor(state).sort((a, b) => a.depth - b.depth);
+// floor setting. Takes the active sample set explicitly (real or mock)
+// rather than closing over a module-level import, so it works for whatever
+// dataset is actually loaded.
+function floorNote(state, activeSamples) {
+  const below = activeSamples.filter((s) => s.depth < state.floorDepth).sort((a, b) => a.depth - b.depth);
   const n = below.length;
   const h = below.filter((s) => s.group === "H").length;
   const c = n - h;
-  const pct = Math.round((n / samples.length) * 100);
+  const pct = Math.round((n / activeSamples.length) * 100);
   const out = [];
   let warn = false;
 
   out.push(
     n === 0
       ? `No sample falls below ${fmt(state.floorDepth)} reads, so depth is not a screening concern for this cohort.`
-      : `<b>${n} of ${samples.length}</b> samples (${pct}%) fall below ${fmt(state.floorDepth)} reads: <span class="mono">${below
+      : `<b>${n} of ${activeSamples.length}</b> samples (${pct}%) fall below ${fmt(state.floorDepth)} reads: <span class="mono">${below
           .map((s) => s.id + " at " + fmt(s.depth))
           .join(", ")}</span>.`
   );
@@ -56,10 +102,10 @@ function floorNote(state) {
   if (n >= 2 && (h === 0 || c === 0)) {
     warn = true;
     out.push(
-      `Every flagged sample is ${h === 0 ? "CRC" : "Healthy"}. Depth-related dropout that tracks group membership is a confounder, not just a QC detail, because it thins one arm non-randomly.`
+      `Every flagged sample is ${h === 0 ? "in the non-Healthy group(s)" : "Healthy"}. Depth-related dropout that tracks group membership is a confounder, not just a QC detail, because it thins one arm non-randomly.`
     );
   } else if (n > 0) {
-    out.push(`Split across groups: Healthy ${h}, CRC ${c}.`);
+    out.push(`Split across groups: Healthy ${h}, other ${c}.`);
   }
   if (pct > 25) {
     warn = true;
@@ -74,7 +120,7 @@ function floorNote(state) {
     out.push("A floor this high is stricter than most published 16S workflows and trades statistical power for depth you may not need.");
   }
 
-  const gap = samples.filter((s) => s.depth < state.floorDepth && s.depth >= state.threshold);
+  const gap = activeSamples.filter((s) => s.depth < state.floorDepth && s.depth >= state.threshold);
   if (gap.length) {
     warn = true;
     out.push(
@@ -97,11 +143,17 @@ export default function QcPage() {
   const svgRef = useRef(null);
   const [checksRevealed, setChecksRevealed] = useState(!!state.revealed.qcChecks);
 
-  const below = belowFloor(state);
-  const note = floorNote(state);
+  const real = useQcData(state.sessionId);
+  const activeSamples = real ? real.samples : mockSamples;
+  const stats = real
+    ? real.stats
+    : { nSamples: mockSamples.length, nFeatures: 187, totalReads: mockTotalSeq, meanDepth: mockMeanDepth, minDepth: mockMinDepth, maxDepth: mockMaxDepth };
+
+  const below = useMemo(() => activeSamples.filter((s) => s.depth < state.floorDepth), [activeSamples, state.floorDepth]);
+  const note = floorNote(state, activeSamples);
 
   const sortedBars = useMemo(() => {
-    return [...samples]
+    return [...activeSamples]
       .sort((a, b) => a.depth - b.depth)
       .map((s, i, arr) => {
         const low = s.depth < state.floorDepth;
@@ -115,7 +167,7 @@ export default function QcPage() {
           }`,
         };
       });
-  }, [state.floorDepth]);
+  }, [activeSamples, state.floorDepth]);
 
   // The depth chart isn't gated behind a decision, so it loads as soon as
   // the page mounts rather than waiting for a "Run..." click — unlike
@@ -146,7 +198,7 @@ export default function QcPage() {
       page: "qc",
       conf: 99,
       src: "schema validator",
-      text: "Parsed 24 samples by 187 genera from a tab-delimited count table, genus taken from the taxonomy lineage.",
+      text: `Parsed ${activeSamples.length} samples by ${stats.nFeatures} genera from a tab-delimited count table, genus taken from the taxonomy lineage.`,
     });
   }
 
@@ -165,25 +217,25 @@ export default function QcPage() {
       <div className="stats">
         <div className="stat">
           <span className="label">Samples</span>
-          <span className="v num">{samples.length}</span>
+          <span className="v num">{stats.nSamples}</span>
         </div>
         <div className="stat">
           <span className="label">Total sequences</span>
-          <span className="v num sm">{fmt(totalSeq)}</span>
+          <span className="v num sm">{fmt(stats.totalReads)}</span>
         </div>
         <div className="stat">
           <span className="label">Genera detected</span>
-          <span className="v num">187</span>
+          <span className="v num">{stats.nFeatures}</span>
         </div>
         <div className="stat">
           <span className="label">Mean depth</span>
-          <span className="v num sm">{fmt(meanDepth)}</span>
+          <span className="v num sm">{fmt(stats.meanDepth)}</span>
           <span className="u">reads</span>
         </div>
         <div className="stat">
           <span className="label">Depth range</span>
           <span className="v num sm">
-            {fmt(minDepth)} to {fmt(maxDepth)}
+            {fmt(stats.minDepth)} to {fmt(stats.maxDepth)}
           </span>
           <span className="tag" style={below.length === 0 ? { background: "var(--color-good-bg)", color: "var(--color-good)" } : undefined}>
             {below.length === 0 ? "all above floor" : `${below.length} below floor`}
@@ -197,7 +249,7 @@ export default function QcPage() {
               <h2>Read depth per sample</h2>
               <p className="sub">Dashed line is the depth floor set below. Hover any bar for the exact count.</p>
             </div>
-            <ChartTools svgRef={svgRef} name="read-depth" getCsvRows={() => [["sample", "group", "reads"], ...samples.map((s) => [s.id, groupName(s.group), s.depth])]} />
+            <ChartTools svgRef={svgRef} name="read-depth" getCsvRows={() => [["sample", "group", "reads"], ...activeSamples.map((s) => [s.id, groupName(s.group), s.depth])]} />
           </div>
           <div className="block-body flex flex-col gap-4">
             <div className="floor-ctl">
@@ -251,14 +303,12 @@ export default function QcPage() {
             />
 
             <div className="legend">
-              <div className="lg">
-                <i style={{ background: "var(--color-cat-1)" }} />
-                Healthy
-              </div>
-              <div className="lg">
-                <i style={{ background: "var(--color-cat-8)" }} />
-                CRC
-              </div>
+              {[...new Set(activeSamples.map((s) => s.group))].map((g) => (
+                <div className="lg" key={g ?? "unknown"}>
+                  <i style={{ background: groupColor(g) }} />
+                  {groupName(g)}
+                </div>
+              ))}
               <div className="lg">
                 <i style={{ background: "var(--color-warn)" }} />
                 Below floor
@@ -282,9 +332,9 @@ export default function QcPage() {
           <div className="block-body">
             <div className="checks">
               {[
-                { ok: true, t: "Delimiter auto-detected", d: "Tab separated, 24 sample columns and 187 genus rows" },
+                { ok: true, t: "Delimiter auto-detected", d: `Tab separated, ${activeSamples.length} sample columns and ${stats.nFeatures} genus rows` },
                 { ok: true, t: "Taxonomy lineage parsed", d: "Genus taken from the last field of the lineage string" },
-                { ok: true, t: "No duplicate sample IDs", d: "24 unique identifiers, all matched to metadata" },
+                { ok: true, t: "No duplicate sample IDs", d: `${activeSamples.length} unique identifiers, all matched to metadata` },
                 { ok: true, t: "No negative or fractional counts", d: "All values are non-negative integers" },
                 below.length === 0
                   ? { ok: true, t: "All samples clear the depth floor", d: `No sample falls below ${fmt(state.floorDepth)} reads.` }

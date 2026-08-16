@@ -158,12 +158,35 @@ def post_chat(sid: str, body: ChatBody):
 # return the raw numbers Compute produces, nothing more.
 
 
+def _group_for_sample(session, sample_id: str) -> str | None:
+    """Best-effort group label from real metadata (DiseaseState, the column
+    both bundled MicrobiomeHD datasets use), for display purposes only --
+    this is NOT the reasoning layer's G1 group-definition decision, just
+    enough to color the QC chart before Design has run. Returns None on the
+    fixture path (no metadata) or if the column isn't present, and callers
+    must handle that by falling back to an ungrouped display.
+    """
+    if session.metadata is None or "DiseaseState" not in session.metadata.columns:
+        return None
+    if sample_id not in session.metadata.index:
+        return None
+    return str(session.metadata.loc[sample_id, "DiseaseState"])
+
+
 @app.get("/api/session/{sid}/qc/depth")
 def get_qc_depth(sid: str):
     session = _require_session(sid)
     depths = session.count_table.sum(axis=0).sort_values()
-    bars = [{"sample_id": s, "depth": int(d)} for s, d in depths.items()]
-    return {"gate_id": "G5", "stats": depth_summary(session.count_table), "bars": bars}
+    bars = [
+        {"sample_id": s, "depth": int(d), "group": _group_for_sample(session, s)}
+        for s, d in depths.items()
+    ]
+    return {
+        "gate_id": "G5",
+        "stats": depth_summary(session.count_table),
+        "n_features": int(session.count_table.shape[0]),
+        "bars": bars,
+    }
 
 
 @app.get("/api/session/{sid}/qc/floor")

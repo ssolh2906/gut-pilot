@@ -175,8 +175,10 @@ export const ALPHA_METRICS = [
   { key: "pielou", label: "Pielou", p: 0.55 },
 ];
 
-export const groupName = (g) => (g === "H" ? "Healthy" : "CRC");
-export const groupColor = (g) => (g === "H" ? "var(--color-cat-1)" : "var(--color-cat-8)");
+// Real datasets can carry a third arm (crc_baxter's metadata has H / CRC /
+// nonCRC) that the original H-vs-C-only mock never needed to handle.
+export const groupName = (g) => (g === "H" ? "Healthy" : g === "nonCRC" ? "Non-CRC" : g || "Unknown");
+export const groupColor = (g) => (g === "H" ? "var(--color-cat-1)" : g === "nonCRC" ? "var(--color-cat-4)" : "var(--color-cat-8)");
 
 // ============================================================
 // REFERENCES — single source of truth, reused by every citation
