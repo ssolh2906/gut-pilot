@@ -189,7 +189,8 @@ export default function DesignPage() {
 
       {sdLoading && (
         <div className="block appear">
-          <div className="block-body pad-t text-sm text-ink-2">
+          <div className="block-body pad-t text-sm text-ink-2 flex items-center gap-2.5">
+            <Spinner />
             Reviewer is checking the real metadata for a grouping variable, testing for batch confounding, and verifying sample independence — this takes a little while.
           </div>
         </div>
@@ -348,7 +349,8 @@ export default function DesignPage() {
           )}
 
           {g4Loading && (
-            <p className="text-sm text-ink-2">
+            <p className="text-sm text-ink-2 flex items-center gap-2.5">
+              <Spinner />
               Reviewer is weighing the rank trade-off against this dataset's real feature counts and verifying its citation live — this takes a little while.
             </p>
           )}
