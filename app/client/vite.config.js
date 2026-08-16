@@ -12,7 +12,7 @@ export default defineConfig({
       // you don't need cors() on the backend at all during development.
       // Change the target below once your real backend port is decided.
       '/api': {
-        target: 'http://localhost:5050',
+        target: 'http://localhost:8000',
         changeOrigin: true,
       },
     },
