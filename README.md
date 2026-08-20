@@ -2,7 +2,9 @@
 
 AI Scientist for microbiome analysis. It runs the full pipeline — QC, normalization, diversity, differential abundance — through an agent that follows science-backed rules and checks its work against the literature, turning weeks of manual analysis into one run.
 
-**Demo:** https://youtu.be/TODFMwWbjeA?si=tVPTmWopzAp0Pjpo
+**Demo:** https://youtu.be/TODFMwWbjeA?si=tVPTmWopzAp0Pjpo</br> 
+[![Demo video](https://img.youtube.com/vi/TODFMwWbjeA/0.jpg)](https://www.youtube.com/watch?v=TODFMwWbjeA) 
+
 
 ## Build
 
